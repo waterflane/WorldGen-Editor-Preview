@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorldGen Editor Preview</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+    <aside class="panel">
+      <header class="brand">
+        <div>
+          <p class="eyebrow">WorldGen Editor</p>
+          <h1>Island Preview</h1>
+        </div>
+        <span id="stateBadge" class="badge">ready</span>
+      </header>
+
+      <section class="control-group">
+        <div class="row">
+          <label for="fileInput" class="file-button">Open JSON</label>
+          <input id="fileInput" type="file" accept=".json,application/json">
+          <button id="loadDefaultButton" type="button">Default</button>
+          <button id="downloadButton" type="button">Download</button>
+        </div>
+        <label>
+          World seed
+          <input id="seedInput" type="text" value="0" spellcheck="false">
+        </label>
+      </section>
+
+      <section class="control-group">
+        <div class="toolbar">
+          <button id="applyButton" type="button">Apply JSON</button>
+          <button id="fitButton" type="button">Fit</button>
+          <button id="resetButton" type="button">Reset View</button>
+        </div>
+        <textarea id="jsonInput" spellcheck="false"></textarea>
+      </section>
+
+      <section class="control-group compact">
+        <div class="split">
+          <label class="toggle">
+            <input id="gridToggle" type="checkbox" checked>
+            Grid
+          </label>
+          <label class="toggle">
+            <input id="labelsToggle" type="checkbox" checked>
+            Labels
+          </label>
+          <label class="toggle">
+            <input id="thresholdToggle" type="checkbox" checked>
+            Shores
+          </label>
+          <label>
+            Quality
+            <select id="qualitySelect">
+              <option value="0.45" selected>Fast</option>
+              <option value="0.65">Balanced</option>
+              <option value="1">Full exact</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="control-group compact">
+        <h2>Islands</h2>
+        <div id="islandList" class="island-list"></div>
+      </section>
+    </aside>
+
+    <section class="stage">
+      <canvas id="previewCanvas"></canvas>
+      <div class="hud">
+        <span id="coords">x 0, z 0</span>
+        <span id="zoomLabel">1 px = 8 blocks</span>
+        <span id="statsLabel">0 islands</span>
+      </div>
+      <div class="legend">
+        <span><i class="deep"></i>deep ocean</span>
+        <span><i class="ocean"></i>ocean</span>
+        <span><i class="beach"></i>shore</span>
+        <span><i class="land"></i>land</span>
+        <span><i class="core"></i>core</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
