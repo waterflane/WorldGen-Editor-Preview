@@ -1,4 +1,4 @@
-const DEFAULT_CONFIG = {
+﻿const DEFAULT_CONFIG = {
   enabled: true,
   entries: [
     { name: "Spawn Island", x: 0, z: 0, radius: 850, roughness: 0.2, noise: { seed: "spawn" } },
@@ -60,6 +60,8 @@ const DEEP_OCEAN_MASK = 0.08;
 
 const canvas = document.querySelector("#previewCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
+const renderBufferCanvas = document.createElement("canvas");
+const renderBufferCtx = renderBufferCanvas.getContext("2d", { alpha: false });
 const jsonInput = document.querySelector("#jsonInput");
 const seedInput = document.querySelector("#seedInput");
 const fileInput = document.querySelector("#fileInput");
@@ -80,6 +82,28 @@ let view = { x: 0, z: 0, blocksPerPixel: 8 };
 let pointer = { down: false, x: 0, y: 0, startX: 0, startZ: 0 };
 let renderQueued = false;
 let renderExactNoise = false;
+let renderWorker = null;
+let renderSequence = 0;
+let latestRenderSequence = 0;
+let workerBusy = false;
+let pendingWorkerMessage = null;
+let lastRenderElapsedMs = 0;
+let lastRenderedView = null;
+let lastRenderedSize = null;
+
+if (typeof Worker !== "undefined") {
+  try {
+    renderWorker = new Worker("renderer.worker.js");
+    renderWorker.addEventListener("message", handleWorkerMessage);
+    renderWorker.addEventListener("error", (event) => {
+      setState(`worker error: ${event.message}`, true);
+      renderWorker = null;
+      requestRender();
+    });
+  } catch (error) {
+    renderWorker = null;
+  }
+}
 
 jsonInput.value = JSON.stringify(DEFAULT_CONFIG, null, 2);
 applyConfig();
@@ -128,6 +152,7 @@ canvas.addEventListener("pointermove", (event) => {
   if (!pointer.down) return;
   view.x = pointer.startX - (event.clientX - pointer.x) * view.blocksPerPixel;
   view.z = pointer.startZ - (event.clientY - pointer.y) * view.blocksPerPixel;
+  drawDragPreview();
   requestRender();
 });
 
@@ -318,22 +343,81 @@ function requestRender() {
 function render() {
   const rect = canvas.getBoundingClientRect();
   const requestedQuality = Number(qualitySelect.value) || 0.45;
-  const quality = pointer.down ? Math.min(requestedQuality, 0.30) : requestedQuality;
-  renderExactNoise = requestedQuality >= 0.99 && !pointer.down;
-  const width = Math.max(1, Math.floor(rect.width * quality));
-  const height = Math.max(1, Math.floor(rect.height * quality));
-  if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width;
-    canvas.height = height;
+  const quality = requestedQuality;
+  renderExactNoise = requestedQuality >= 0.99;
+  const cssWidth = Math.max(1, Math.floor(rect.width));
+  const cssHeight = Math.max(1, Math.floor(rect.height));
+  const width = Math.max(1, Math.floor(cssWidth * quality));
+  const height = Math.max(1, Math.floor(cssHeight * quality));
+  const resized = ensureCanvasSize(cssWidth, cssHeight);
+  if (resized) {
+    drawDragPreview();
   }
 
+  if (renderWorker) {
+    queueWorkerRender({
+      id: ++renderSequence,
+      configText: jsonInput.value,
+      seedText: seedInput.value,
+      view: { ...view },
+      width,
+      height,
+      cssWidth,
+      cssHeight,
+      quality,
+      exact: renderExactNoise,
+    });
+    return;
+  }
+
+  renderOnMainThread(width, height, cssWidth, cssHeight, quality, renderExactNoise);
+}
+
+function queueWorkerRender(message) {
+  latestRenderSequence = message.id;
+  if (workerBusy) {
+    pendingWorkerMessage = message;
+    return;
+  }
+
+  workerBusy = true;
+  renderWorker.postMessage(message);
+}
+
+function handleWorkerMessage(event) {
+  const message = event.data;
+  workerBusy = false;
+
+  if (message.id === latestRenderSequence) {
+    if (message.error) {
+      setState(message.error, true);
+    } else {
+      lastRenderElapsedMs = message.elapsedMs;
+      ensureCanvasSize(message.cssWidth, message.cssHeight);
+      drawScaledMap(new ImageData(new Uint8ClampedArray(message.buffer), message.width, message.height), message.cssWidth, message.cssHeight, message.view);
+      drawPostRenderOverlays();
+      updateRenderLabels(message.exact, "worker");
+    }
+  }
+
+  if (pendingWorkerMessage) {
+    const next = pendingWorkerMessage;
+    pendingWorkerMessage = null;
+    queueWorkerRender(next);
+  }
+}
+
+function renderOnMainThread(width, height, cssWidth, cssHeight, quality, exact) {
+  const started = performance.now();
+  const previousExact = renderExactNoise;
+  renderExactNoise = exact;
   ctx.imageSmoothingEnabled = false;
   const image = ctx.createImageData(width, height);
   const data = image.data;
   for (let y = 0; y < height; y++) {
-    const blockZ = view.z + (y / quality - rect.height / 2) * view.blocksPerPixel;
+    const blockZ = view.z + (y / quality - cssHeight / 2) * view.blocksPerPixel;
     for (let x = 0; x < width; x++) {
-      const blockX = view.x + (x / quality - rect.width / 2) * view.blocksPerPixel;
+      const blockX = view.x + (x / quality - cssWidth / 2) * view.blocksPerPixel;
       const value = sampleMask(blockX, blockZ);
       const color = colorForMask(value);
       const offset = (y * width + x) * 4;
@@ -343,14 +427,74 @@ function render() {
       data[offset + 3] = 255;
     }
   }
-  ctx.putImageData(image, 0, 0);
-  ctx.save();
-  ctx.scale(quality, quality);
-  drawOverlays(rect.width, rect.height);
-  ctx.restore();
+  renderExactNoise = previousExact;
+  lastRenderElapsedMs = Math.round(performance.now() - started);
+  drawScaledMap(image, cssWidth, cssHeight, { ...view });
+  drawPostRenderOverlays();
+  updateRenderLabels(exact, "main");
+}
 
+function drawScaledMap(image, cssWidth, cssHeight, renderedView) {
+  if (renderBufferCanvas.width !== image.width || renderBufferCanvas.height !== image.height) {
+    renderBufferCanvas.width = image.width;
+    renderBufferCanvas.height = image.height;
+  }
+  renderBufferCtx.imageSmoothingEnabled = false;
+  renderBufferCtx.putImageData(image, 0, 0);
+  lastRenderedView = renderedView ? { ...renderedView } : { ...view };
+  lastRenderedSize = { cssWidth, cssHeight };
+  drawBufferedMap(0, 0);
+}
+
+function drawBufferedMap(offsetX, offsetY) {
+  if (!lastRenderedSize || renderBufferCanvas.width <= 0 || renderBufferCanvas.height <= 0) {
+    return;
+  }
+
+  ctx.imageSmoothingEnabled = false;
+  fillPreviewBackground();
+  ctx.drawImage(renderBufferCanvas, offsetX, offsetY, lastRenderedSize.cssWidth, lastRenderedSize.cssHeight);
+}
+
+function fillPreviewBackground() {
+  ctx.fillStyle = "#163f68";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+function drawDragPreview() {
+  if (!lastRenderedView || !lastRenderedSize || view.blocksPerPixel !== lastRenderedView.blocksPerPixel) {
+    fillPreviewBackground();
+    drawPostRenderOverlays();
+    return;
+  }
+
+  const offsetX = (lastRenderedView.x - view.x) / view.blocksPerPixel;
+  const offsetY = (lastRenderedView.z - view.z) / view.blocksPerPixel;
+  drawBufferedMap(offsetX, offsetY);
+  drawPostRenderOverlays();
+}
+
+function ensureCanvasSize(width, height) {
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+    return true;
+  }
+  return false;
+}
+
+function drawPostRenderOverlays() {
+  const previousExact = renderExactNoise;
+  renderExactNoise = false;
+  ctx.save();
+  drawOverlays(canvas.width, canvas.height);
+  ctx.restore();
+  renderExactNoise = previousExact;
+}
+
+function updateRenderLabels(exact, engine) {
   zoomLabel.textContent = `1 px = ${formatNumber(view.blocksPerPixel)} blocks`;
-  statsLabel.textContent = `${compiled.length} islands`;
+  statsLabel.textContent = `${compiled.length} islands | ${exact ? "exact" : "fast"} ${engine} ${lastRenderElapsedMs} ms`;
 }
 
 function drawOverlays(width, height) {
@@ -620,3 +764,9 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+
+
+
+
+
