@@ -9,6 +9,7 @@ Open `index.html` in a browser and load JSON with `Open JSON`, or edit the text 
 ## What It Shows
 
 - island shapes using the same mask algorithm as the mod;
+- `island`, `ocean`, and `archipelago` entries from `continents.json`;
 - deep ocean, ocean, shore, land, and core zones;
 - island centers, coordinate grid, zoom, and pan;
 - quality modes for fast editing, balanced inspection, or exact final coastline checks;
