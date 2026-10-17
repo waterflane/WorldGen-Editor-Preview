@@ -4,7 +4,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const core=require('../mask-core.js');
 global.WgeMask=core;
-const {create}=require('../render-core.js');
+const {create,sampleStep}=require('../render-core.js');
 const raw={enabled:true,entries:[{x:0,z:0,radius:100}]};
 
 test('Minecraft seed parsing, including signed overflow and empty input',()=>{
@@ -74,4 +74,58 @@ test('unavailable or incompatible Java runtime is reported explicitly',async()=>
  const original=global.fetch;global.fetch=async()=>{throw new TypeError('Failed to fetch');};
  try {await assert.rejects(create().render({...message(),source:'biomes',backendAvailable:true},()=>true),/Java preview unavailable/);}
  finally {global.fetch=original;}
+});
+
+test('biome quality increases overview resolution and Full follows window pixels',()=>{
+ const base={...message(),source:'biomes',cssWidth:1280,cssHeight:720,view:{x:0,z:0,blocksPerPixel:6}};
+ assert.equal(sampleStep({...base,quality:.45}),64);
+ assert.equal(sampleStep({...base,quality:.65}),32);
+ assert.equal(sampleStep({...base,quality:1}),8);
+ assert.equal(sampleStep({...base,quality:1,view:{...base.view,blocksPerPixel:1}}),1);
+ assert.ok(sampleStep({...base,quality:1,interactive:true})>sampleStep({...base,quality:1}));
+});
+
+test('tile composition leaves no gaps at negative coordinates and fractional zoom',async()=>{
+ const renderer=create();
+ for(const [x,z] of [[-512,-512],[-.1,16],[0,0]])for(const quality of [.45,.65,1])for(const blocksPerPixel of [1,1.3,8.25]){
+  const result=await renderer.render({...message(),cssWidth:83,cssHeight:57,width:Math.floor(83*quality),height:Math.floor(57*quality),quality,view:{x,z,blocksPerPixel}},()=>true);
+  const pixels=new Uint8ClampedArray(result.buffer);
+  for(let i=3;i<pixels.length;i+=4)assert.equal(pixels[i],255,`unpainted pixel at ${x},${z} quality ${quality} zoom ${blocksPerPixel}`);
+ }
+});
+
+test('fine biome tiles progressively replace coarse data without changing final samples',async()=>{
+ const original=global.fetch;let delayNext=false,frames=0;
+ const palette=['minecraft:ocean','minecraft:forest'];
+ const indexAt=(x,z)=>(Math.floor(x/17)+Math.floor(z/23))&1;
+ const heightAt=(x,z)=>Math.floor(x/32)+Math.floor(z/16);
+ global.fetch=async(url,options)=>{
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'progress',request_base:0})};
+  const q=JSON.parse(options.body);
+  if(delayNext){delayNext=false;await new Promise(resolve=>setTimeout(resolve,270));}
+  const biomes=[],heights=[];
+  for(let row=0;row<q.size;row++)for(let col=0;col<q.size;col++){
+   const x=q.x+col*q.step,z=q.z+row*q.step;biomes.push(indexAt(x,z));heights.push(heightAt(x,z));
+  }
+  return {ok:true,json:async()=>({palette,biomes,heights})};
+ };
+ try{
+  const renderer=create(),base={...message(),source:'biomes',backendAvailable:true,cssWidth:64,cssHeight:64,view:{x:-3.5,z:17.25,blocksPerPixel:4}};
+  const preview=await renderer.render({...base,quality:.125,width:8,height:8},()=>true);
+  delayNext=true;
+  const target={...base,quality:.65,width:41,height:41};
+  const result=await renderer.render(target,()=>true,{preview,onProgress:frame=>{
+   frames++;assert.equal(frame.targetStep,8);assert.equal(frame.sampleStep,preview.sampleStep);
+   const pixels=new Uint8ClampedArray(frame.buffer),ids=new Uint16Array(frame.biomesBuffer);
+   for(let i=0;i<ids.length;i++){assert.equal(pixels[i*4+3],255);assert.ok(frame.palette[ids[i]]);}
+   structuredClone(frame,{transfer:[frame.buffer,frame.biomesBuffer,frame.heightsBuffer]});
+  }});
+  assert.ok(frames>0,'must paint fine tiles before the entire view completes');
+  const ids=new Uint16Array(result.biomesBuffer),heights=new Int16Array(result.heightsBuffer);
+  for(let row=0;row<target.height;row++)for(let col=0;col<target.width;col++){
+   const x=Math.floor((target.view.x+(col/target.quality-target.cssWidth/2)*target.view.blocksPerPixel)/result.sampleStep)*result.sampleStep;
+   const z=Math.floor((target.view.z+(row/target.quality-target.cssHeight/2)*target.view.blocksPerPixel)/result.sampleStep)*result.sampleStep;
+   const i=row*target.width+col;assert.equal(result.palette[ids[i]],palette[indexAt(x,z)]);assert.equal(heights[i],heightAt(x,z));
+  }
+ }finally{global.fetch=original;}
 });

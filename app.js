@@ -265,7 +265,7 @@ function render() {
   const identity=[appliedConfigText,appliedSeedText,mapSource.value,heightMode.value].join("\n");
   if(identity!==renderIdentity){renderIdentity=identity;clearRenderedMap();}
   const rect = canvas.getBoundingClientRect();
-  const requestedQuality = Number(qualitySelect.value) || 0.45;
+  const requestedQuality = Number(qualitySelect.value) || 0.65;
   const interactive = renderMode === "interactive" || isInteracting;
   const quality = interactive ? Math.min(0.20, requestedQuality) : requestedQuality;
   renderExactNoise = true;
@@ -353,9 +353,17 @@ function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact) {
     exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError};
   latestRenderSequence=message.id;
   fallbackRenderer.cancel(message.id);
-  fallbackRenderer.render(message,()=>message.id===latestRenderSequence).then(result=>{
-    if(result)handleWorkerMessage({data:result});
-  }).catch(error=>{if(message.id===latestRenderSequence){clearRenderedMap();setState(error.message,true);}});
+  const active=()=>message.id===latestRenderSequence;
+  void(async()=>{
+    let preview;
+    if(message.source==="biomes"){
+      const quality=Math.min(message.quality,32/Math.max(cssWidth,cssHeight));
+      preview=await fallbackRenderer.render({...message,quality,width:Math.max(1,Math.floor(cssWidth*quality)),height:Math.max(1,Math.floor(cssHeight*quality))},active);
+      if(preview&&active())handleWorkerMessage({data:{...preview,interactive:true}});
+    }
+    const result=await fallbackRenderer.render(message,active,{preview,onProgress:frame=>{if(active())handleWorkerMessage({data:frame});}});
+    if(result&&active())handleWorkerMessage({data:result});
+  })().catch(error=>{if(active()){clearRenderedMap();setState(error.message,true);}});
 }
 
 function clearRenderedMap(){
@@ -429,7 +437,8 @@ function updateRenderLabels(exact, engine, interactive) {
   const structures = (compiled.sourceSummaries || compiled).length;
   const childCount = compiled.length - structures;
   const quality = mapSource.value === "biomes" ? "biomes" : "exact mask";
-  statsLabel.textContent = `${structures} structures${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${lastBiomeMap ? " | sample " + lastBiomeMap.sampleStep + " blocks" : ""}`;
+  const sampling=lastBiomeMap ? ` | sample ${lastBiomeMap.sampleStep} blocks${lastBiomeMap.targetStep ? ` → ${lastBiomeMap.targetStep}` : ""}` : "";
+  statsLabel.textContent = `${structures} structures${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${sampling}`;
 }
 
 function drawOverlays(width, height) {
