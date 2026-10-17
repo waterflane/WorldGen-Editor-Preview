@@ -40,6 +40,11 @@
       </section>
 
       <section class="control-group compact">
+        <label>Map <select id="mapSource"><option value="mask">Island mask (offline)</option><option value="biomes">Minecraft biomes (Java)</option></select></label>
+        <label>Height <select id="heightMode"><option value="surface">Base surface</option><option value="300">Y = 300</option><option value="64">Y = 64</option><option value="0">Y = 0</option><option value="-32">Y = -32</option></select></label>
+        <label><input id="reliefToggle" type="checkbox"> Base relief shading (surface mode)</label>
+      </section>
+      <section class="control-group compact">
         <div class="split">
           <label class="toggle">
             <input id="gridToggle" type="checkbox" checked>
@@ -91,6 +96,8 @@
     </section>
   </main>
 
+  <script src="mask-core.js"></script>
+  <script src="render-core.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
