@@ -43,11 +43,35 @@ test('cancellation yields to new work and cached rendering avoids recomputation'
  let active=true;const start=performance.now();const task=renderer.render({...message(raw,2),width:1024,height:1024,cssWidth:1024,cssHeight:1024},()=>active);
  setTimeout(()=>{active=false},1);assert.equal(await task,null);assert.ok(performance.now()-start<100,'cancel should finish in 100ms');
  }finally{core.sampleMask=original;}
- assert.ok(renderer.cacheSize()<=256);
+ assert.ok(renderer.cacheSize()<=2048);
 });
 
 test('world snapshots retain legacy versions and per-world enable flag',()=>{
  const document=core.readDocument({generation_version:1,enabled:false,config:raw});
  assert.equal(document.generationVersion,1);assert.equal(document.config.enabled,false);assert.equal(raw.enabled,true);
+ assert.equal(core.readDocument({config:raw}).generationVersion,1);
  assert.throws(()=>core.readDocument({generation_version:3,config:raw}));
+});
+
+test('HTTP work can be aborted while the Java tile is still computing',async()=>{
+ const original=global.fetch;let tileStarted,active=true,cancelled=false;
+ const started=new Promise(resolve=>tileStarted=resolve);
+ global.fetch=async(url,options)=>{
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'test',request_base:0})};
+  if(url==='/api/cancel'){cancelled=true;return {ok:true};}
+  tileStarted();return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError'))));
+ };
+ try{
+  const renderer=create(),task=renderer.render({...message(),source:'biomes',backendAvailable:true},()=>active);
+  await started;const now=performance.now();active=false;renderer.cancel(2);
+  await assert.rejects(task,{name:'AbortError'});assert.ok(cancelled);assert.ok(performance.now()-now<100);
+ }finally{global.fetch=original;}
+});
+
+test('unavailable or incompatible Java runtime is reported explicitly',async()=>{
+ const renderer=create();
+ await assert.rejects(renderer.render({...message(),source:'biomes',backendAvailable:false,backendError:'Java preview version mismatch'},()=>true),/version mismatch/);
+ const original=global.fetch;global.fetch=async()=>{throw new TypeError('Failed to fetch');};
+ try {await assert.rejects(create().render({...message(),source:'biomes',backendAvailable:true},()=>true),/Java preview unavailable/);}
+ finally {global.fetch=original;}
 });

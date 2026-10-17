@@ -91,10 +91,18 @@ const mapSource = document.querySelector("#mapSource");
 const heightMode = document.querySelector("#heightMode");
 const reliefToggle = document.querySelector("#reliefToggle");
 let backendAvailable = false;
-for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener("change",()=>requestRender());
+let backendError = "Start the local Java preview and open its URL to view biomes";
+let renderIdentity = "";
+function updateModeControls(){
+  const java=mapSource.value==="biomes";
+  heightMode.disabled=!java;reliefToggle.disabled=!java||heightMode.value!=="surface";thresholdToggle.disabled=java;
+}
+updateModeControls();
+for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener("change",()=>{updateModeControls();requestRender();});
 if (location.protocol !== "file:") fetch("/api/info").then(r=>r.json()).then(info=>{
   backendAvailable=info.protocol===1&&info.minecraft==="1.21.1";
-  if(backendAvailable){mapSource.value="biomes";requestRender();}
+  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 1 / Minecraft 1.21.1";
+  if(backendAvailable){mapSource.value="biomes";updateModeControls();requestRender();}
 }).catch(()=>{});
 let renderWorker = null;
 let renderSequence = 0;
@@ -177,7 +185,6 @@ canvas.addEventListener("pointermove", (event) => {
   if (!pointer.down) return;
   view.x = pointer.startX - (event.clientX - pointer.x) * view.blocksPerPixel;
   view.z = pointer.startZ - (event.clientY - pointer.y) * view.blocksPerPixel;
-  drawDragPreview();
   requestRender("interactive");
 });
 
@@ -249,11 +256,14 @@ function requestRender(mode = "final") {
   renderQueued = true;
   requestAnimationFrame(() => {
     renderQueued = false;
+    if(isInteracting)drawDragPreview();
     render();
   });
 }
 
 function render() {
+  const identity=[appliedConfigText,appliedSeedText,mapSource.value,heightMode.value].join("\n");
+  if(identity!==renderIdentity){renderIdentity=identity;clearRenderedMap();}
   const rect = canvas.getBoundingClientRect();
   const requestedQuality = Number(qualitySelect.value) || 0.45;
   const interactive = renderMode === "interactive" || isInteracting;
@@ -286,6 +296,7 @@ function render() {
       heightMode: heightMode.value,
       relief: reliefToggle.checked,
       backendAvailable,
+      backendError,
       interactive,
     });
     return;
@@ -306,6 +317,7 @@ function handleWorkerMessage(event) {
 
   if (message.id === latestRenderSequence) {
     if (message.error) {
+      clearRenderedMap();
       setState(message.error, true);
     } else {
       lastRenderElapsedMs = message.elapsedMs;
@@ -338,11 +350,19 @@ function handleWorkerMessage(event) {
 
 function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact) {
   const message={id:++renderSequence,configText:appliedConfigText,seedText:appliedSeedText,view:{...view},width,height,cssWidth,cssHeight,quality,
-    exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable};
+    exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError};
   latestRenderSequence=message.id;
+  fallbackRenderer.cancel(message.id);
   fallbackRenderer.render(message,()=>message.id===latestRenderSequence).then(result=>{
     if(result)handleWorkerMessage({data:result});
-  }).catch(error=>setState(error.message,true));
+  }).catch(error=>{if(message.id===latestRenderSequence){clearRenderedMap();setState(error.message,true);}});
+}
+
+function clearRenderedMap(){
+  lastBiomeMap=null;lastRenderedView=null;lastRenderedSize=null;
+  legendKey="";legend.replaceChildren();statsLabel.textContent="Awaiting map data";
+  coords.textContent=`x ${formatNumber(view.x)}, z ${formatNumber(view.z)}`;
+  fillPreviewBackground();
 }
 
 function drawScaledMap(image, cssWidth, cssHeight, renderedView) {
@@ -357,31 +377,32 @@ function drawScaledMap(image, cssWidth, cssHeight, renderedView) {
   drawBufferedMap(0, 0);
 }
 
-function drawBufferedMap(offsetX, offsetY) {
+function drawBufferedMap(offsetX, offsetY, scale = 1) {
   if (!lastRenderedSize || renderBufferCanvas.width <= 0 || renderBufferCanvas.height <= 0) {
     return;
   }
 
   ctx.imageSmoothingEnabled = false;
   fillPreviewBackground();
-  ctx.drawImage(renderBufferCanvas, offsetX, offsetY, lastRenderedSize.cssWidth, lastRenderedSize.cssHeight);
+  ctx.drawImage(renderBufferCanvas, offsetX, offsetY, lastRenderedSize.cssWidth * scale, lastRenderedSize.cssHeight * scale);
 }
 
 function fillPreviewBackground() {
-  ctx.fillStyle = "#163f68";
+  ctx.fillStyle = "#30353c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawDragPreview() {
-  if (!lastRenderedView || !lastRenderedSize || view.blocksPerPixel !== lastRenderedView.blocksPerPixel) {
+  if (!lastRenderedView || !lastRenderedSize) {
     fillPreviewBackground();
     drawPostRenderOverlays();
     return;
   }
 
-  const offsetX = (lastRenderedView.x - view.x) / view.blocksPerPixel;
-  const offsetY = (lastRenderedView.z - view.z) / view.blocksPerPixel;
-  drawBufferedMap(offsetX, offsetY);
+  const scale = lastRenderedView.blocksPerPixel / view.blocksPerPixel;
+  const offsetX = (canvas.width - lastRenderedSize.cssWidth * scale) / 2 + (lastRenderedView.x - view.x) / view.blocksPerPixel;
+  const offsetY = (canvas.height - lastRenderedSize.cssHeight * scale) / 2 + (lastRenderedView.z - view.z) / view.blocksPerPixel;
+  drawBufferedMap(offsetX, offsetY, scale);
   drawPostRenderOverlays();
 }
 
@@ -584,3 +605,7 @@ function escapeHtml(value) {
 
 
 
+
+if(new URLSearchParams(location.search).has("profile") && typeof PerformanceObserver!=="undefined") {
+  try { new PerformanceObserver(list=>{for(const entry of list.getEntries())console.info(`WGE UI longtask ${entry.duration.toFixed(1)} ms`);}).observe({type:"longtask",buffered:true}); } catch {}
+}

@@ -45,6 +45,7 @@ Enter the world's `/seed` value. Text seeds follow Minecraft's rules; a blank se
 A disabled or empty offline mask is displayed neutrally, because the real mod delegates to vanilla in that case.
 
 Rendering uses a bounded world-space tile cache, a coarse first pass for Java maps, and cancellation of obsolete work. Dragging reuses the last image while new tiles arrive. Reopening an area reuses computed results.
+Zooming immediately scales the last image while the new view is computed. Changing seed, configuration or height mode clears the old map; a Java error is displayed instead of presenting old pixels as a new result.
 
 ## Tests
 

@@ -8,12 +8,17 @@
   function create(){
     let key="",config,compiled,session=null,generationVersion=2;
     const client=typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():String(Math.random());
+    let controller=null;
     const tiles=new Map();
-    const size=16;
-    function remember(id,tile){tiles.delete(id);tiles.set(id,tile);while(tiles.size>256)tiles.delete(tiles.keys().next().value);return tile;}
+
+    function remember(id,tile){tiles.delete(id);tiles.set(id,tile);while(tiles.size>2048)tiles.delete(tiles.keys().next().value);return tile;}
     async function post(path,body,active){
       if(!active())return null;
-      const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const requestController=new AbortController();controller=requestController;
+      let response;
+      try { response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),signal:requestController.signal}); }
+      catch(error){if(error.name==="AbortError")throw error;throw new Error("Java preview unavailable; start the local process and apply again");}
+      if(controller===requestController)controller=null;
       const result=await response.json();
       if(!active()||result.cancelled)return null;
       if(!response.ok){if(String(result.error).startsWith("Session expired"))session=null;throw new Error(result.error||"Java preview request failed");}return result;
@@ -26,9 +31,14 @@
         config=parsed;compiled=next;generationVersion=document.generationVersion;key=nextKey;session=null;tiles.clear();
       }
       const java=message.source==="biomes";
-      if(java&&!message.backendAvailable)throw new Error("Start the local Java preview and open its URL to view biomes");
+      const size=java?8:16;
+      if(java&&!message.backendAvailable)throw new Error(message.backendError||"Start the local Java preview and open its URL to view biomes");
       if(java&&!session){session=await post("/api/session",{seed:message.seedText,config,generation_version:generationVersion,client},active);if(!session)return null;}
-      const step=2**Math.max(0,Math.floor(Math.log2(message.view.blocksPerPixel/message.quality)));
+      const budget=message.interactive?24:message.quality>=.99?256:message.quality>=.60?128:64;
+      const overviewLimit=java && !(message.quality>=.99 && message.view.blocksPerPixel<=1)
+        ? Math.max(message.cssWidth,message.cssHeight)*message.view.blocksPerPixel/budget : 0;
+      const ratio=Math.max(message.view.blocksPerPixel/message.quality,overviewLimit);
+      const step=2**Math.max(0,java?Math.ceil(Math.log2(ratio)):Math.floor(Math.log2(ratio)));
       const data=new Uint8ClampedArray(message.width*message.height*4);
       const palette=[],paletteIndices=new Map();
       const biomePixels=java?new Uint16Array(message.width*message.height):null;
@@ -83,7 +93,12 @@
       }
       return {...message,elapsedMs:Math.round(performance.now()-started),buffer:data.buffer,biomesBuffer:biomePixels?.buffer,heightsBuffer:heightPixels?.buffer,palette,sampleStep:step,generationVersion,exact:true};
     }
-    return {render,cacheSize:()=>tiles.size};
+    function cancel(nextId){
+      controller?.abort();controller=null;
+      if(session)void fetch("/api/cancel",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({session:session.session,client,request:(session.request_base||0)+nextId})}).catch(()=>{});
+    }
+    return {render,cancel,cacheSize:()=>tiles.size};
   }
   function maskColor(v){return v<.08?[22,63,104]:v<.30?[38,118,166]:v<.50?[62,139,174]:v<.58?[216,202,142]:v<.82?[115,167,96]:[71,123,79];}
   function biomeColor(id){

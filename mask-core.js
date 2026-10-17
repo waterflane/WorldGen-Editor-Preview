@@ -25,8 +25,8 @@ const DEEP_OCEAN_MASK = 0.08;
 const SPATIAL_CELL_SIZE = 512;
 
 function readDocument(input) {
-  if(input?.config && input.generation_version!==undefined){
-    const version=input.generation_version;
+  if(input?.config){
+    const version=input.generation_version===undefined?1:input.generation_version;
     if(!Number.isInteger(version)||version<1||version>2)throw new Error("Unsupported generation_version");
     if(input.enabled!=null&&typeof input.enabled!=="boolean")throw new Error("World enabled must be boolean");
     return {config:{...input.config,enabled:(input.config.enabled??true)&&input.enabled!==false},generationVersion:version};
@@ -78,8 +78,8 @@ function parseEntry(entry, index, seed) {
   if (entry.overlap != null && typeof entry.overlap !== "boolean") throw new Error(`${path}.overlap must be boolean`);
   if (entry.noise != null && (typeof entry.noise !== "object" || Array.isArray(entry.noise))) throw new Error(`${path}.noise must be an object`);
   if (entry.exclude_biomes != null && (!Array.isArray(entry.exclude_biomes) || entry.exclude_biomes.some(id => typeof id !== "string" || !/^#?[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(id)))) throw new Error(`${path}.exclude_biomes is invalid`);
-  const temperature=entry.temperature ?? entry.climate ?? "standard";
-  if (!["cold","temperate","warm","standard","standart","vanilla","auto"].includes(temperature)) throw new Error(`${path}.temperature is invalid`);
+  const temperature=stringValue(entry.temperature ?? entry.climate,"standard").toLowerCase();
+  if (!["cold","temperate","normal","warm","hot","standard","standart","vanilla","auto"].includes(temperature)) throw new Error(`${path}.temperature is invalid`);
   const patch=entry.biome_patch_size ?? 512;
   if (!Number.isInteger(patch) || patch<4 || patch>4096) throw new Error(`${path}.biome_patch_size must be between 4 and 4096`);
   const name = stringValue(entry.name, `island_${index + 1}`);
@@ -142,7 +142,7 @@ function parseEntry(entry, index, seed) {
       amplitudes,
     },
     seed: mix(seed, stableStringSeed(noiseSeed)),
-    seed32: hash32(`${seed.toString()}:${noiseSeed}`),
+
     exactNoiseCache: new Map(),
     count: type === "archipelago" ? positiveInteger(entry.count, DEFAULT_ARCHIPELAGO_COUNT, `${path}.count`) : 0,
     minRadius,
@@ -155,7 +155,7 @@ function parseEntry(entry, index, seed) {
     maxShapePower,
   };
   if (![xDivisor,zDivisor].every(n=>Number.isFinite(n)&&n>=0.001&&n<=60000000)) throw new Error(`${path}: compiled radii outside supported range`);
-  if (parsed.noise.firstOctave < -20 || parsed.noise.firstOctave > 20 || parsed.noise.scale>1024 || amplitudes.length>16 || !Number.isFinite(amplitudes.reduce((a,b)=>a+b,0)) || parsed.multiplier>100 || parsed.edgeWidth>10 || parsed.count>4096 || parsed.noise.firstOctave+amplitudes.length-1>12 || Math.abs(centerX)>30000000 || Math.abs(centerZ)>30000000 || Math.abs(rotation)>360000 || parsed.maxRadius*Math.max(1,parsed.maxStretch)>60000000 || parsed.maxStretch>100 || parsed.spacing>1000) throw new Error(`${path}: noise or shape exceeds supported limits`);
+  if (parsed.noise.firstOctave < -20 || parsed.noise.firstOctave > 20 || parsed.noise.scale>1024 || amplitudes.length>16 || !Number.isFinite(amplitudes.reduce((a,b)=>a+b,0)) || parsed.multiplier>100 || parsed.edgeWidth>10 || parsed.count>4096 || parsed.noise.firstOctave+amplitudes.length-1>12 || Math.abs(centerX)>30000000 || Math.abs(centerZ)>30000000 || Math.abs(rotation)>360000 || parsed.maxRadius*Math.max(1,parsed.maxStretch)>60000000 || parsed.maxStretch>100 || parsed.spacing>1000 || (type==="archipelago"&&parsed.minRadius*Math.min(1,parsed.minStretch)<0.001)) throw new Error(`${path}: noise or shape exceeds supported limits`);
   attachBounds(parsed);
   return parsed;
 }
@@ -297,7 +297,7 @@ function compileArchipelago(entry, seed) {
           edgeWidth: entry.edgeWidth,
           noise: { ...entry.noise, seed: noiseSeed },
           seed: mix(0n, stableStringSeed(noiseSeed)),
-          seed32: hash32(`0:${noiseSeed}`),
+
           exactNoiseCache: new Map(),
         });
         attachBounds(children[children.length - 1]);
@@ -463,20 +463,6 @@ function stableStringSeed(value) {
     hash = BigInt.asIntN(64, 31n * hash + BigInt(value.charCodeAt(index)));
   }
   return hash;
-}
-
-function hash32(value) {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index++) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  hash ^= hash >>> 16;
-  hash = Math.imul(hash, 0x7feb352d);
-  hash ^= hash >>> 15;
-  hash = Math.imul(hash, 0x846ca68b);
-  hash ^= hash >>> 16;
-  return hash | 0;
 }
 
 function fastFloor(value) {
