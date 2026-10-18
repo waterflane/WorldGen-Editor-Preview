@@ -189,3 +189,22 @@ test('first coarse tile is visible before the rest finish, without inventing hov
   assert.ok(!new Uint16Array(result.biomesBuffer).includes(65535),'completed map must have no missing samples');
  }finally{release();global.fetch=original;}
 });
+
+test('enabling relief requests exact heights instead of reusing biome-only ocean tiles',async()=>{
+ const original=global.fetch;let requests=0;
+ global.fetch=async(url,options)=>{
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'optional-height',request_base:0})};
+  requests++;const q=JSON.parse(options.body);
+  return {ok:true,json:async()=>({palette:['minecraft:deep_ocean'],biomes:Array(q.size*q.size).fill(0),heights:Array(q.size*q.size).fill(q.include_heights?63:-32768)})};
+ };
+ try{
+  const renderer=create(),base={...message(),source:'biomes',backendAvailable:true};
+  const plain=await renderer.render(base,()=>true),beforeRelief=requests;
+  assert.ok([...new Int16Array(plain.heightsBuffer)].every(y=>y===-32768));
+  const shaded=await renderer.render({...base,relief:true},()=>true);
+  assert.ok(requests>beforeRelief,'relief must fetch full heights');
+  assert.ok([...new Int16Array(shaded.heightsBuffer)].every(y=>y===63));
+  const beforeReturn=requests;await renderer.render(base,()=>true);
+  assert.equal(requests,beforeReturn,'the biome-only cache must survive the relief toggle');
+ }finally{global.fetch=original;}
+});
