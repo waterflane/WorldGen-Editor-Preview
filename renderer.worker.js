@@ -1,4 +1,4 @@
-importScripts("mask-core.js", "render-core.js");
+importScripts("mask-core.js", "biome-colors.js", "render-core.js");
 const renderer=WgeRenderer.create();
 let latest=0,pending=null,running=false;
 self.onmessage=event=>{

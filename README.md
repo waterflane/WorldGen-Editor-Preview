@@ -54,6 +54,8 @@ Enabling relief requests every base height and uses a separate tile-cache group;
 
 Both passes stream completed tiles, including the very first coarse tile; unfinished areas stay neutral and have no biome tooltip. The HUD reports elapsed time for the entire browser render request (coarse pass, refinement, HTTP and worker communication), plus the time to its first frame. It does not report only the last Java tile or only the refinement pass. Startup is separate. Large uncached surface views still require many exact columns; sub-second API microbenchmarks do not imply a sub-second complete map.
 
+All 64 Minecraft 1.21.1 biomes have distinct map colors, including ocean temperatures, forest variants, cherry groves and caves. Unknown registry IDs receive stable saturated colors based on their full namespaced ID. Hover over the map to see the biome name; unavailable data stays neutral without a tooltip. These colors are for map readability and do not change biome selection.
+
 For a reproducible whole-view worker/API measurement, run `node tools/benchmark_viewport.cjs [config.json] [seed]` from the adjacent mod repository. It reports first tile, first frame, complete coarse and detailed passes, HTTP latency percentiles, cached redraw time and checksums. Set `WGE_BENCH_FORCE_HEIGHTS=1` to request all heights without shading, for comparison with the original path. Use a fresh Java process for a cold run and avoid creating other sessions during the benchmark. The mod repository's `tools/column-performance.json` records whole-view and one-block comparisons with the preceding implementation.
 
 ## Tests

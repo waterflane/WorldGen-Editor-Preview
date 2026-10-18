@@ -1,5 +1,6 @@
 /* Bounded world-space tile cache and cooperative cancellation, shared with the no-worker fallback. */
 (function(root){
+  const {biomeColor}=root.WgeBiomeColors||(typeof require==="function"?require("./biome-colors.js"):{});
   const wait=()=>new Promise(resolve=>{
     if(typeof setImmediate==="function")setImmediate(resolve);
     else if(root.scheduler?.yield)root.scheduler.yield().then(resolve);
@@ -225,17 +226,6 @@
     return {render,cancel,cacheSize:()=>tiles.size};
   }
   function maskColor(v){return v<.08?[22,63,104]:v<.30?[38,118,166]:v<.50?[62,139,174]:v<.58?[216,202,142]:v<.82?[115,167,96]:[71,123,79];}
-  function biomeColor(id){
-    if(id.includes("river"))return id.includes("frozen")?[135,193,211]:[53,133,194];
-    if(id.includes("ocean"))return id.includes("deep")?[22,63,104]:id.includes("frozen")?[139,192,210]:[38,118,166];
-    if(id.includes("beach")||id.includes("shore"))return [216,202,142];
-    if(/snow|frozen|ice|grove/.test(id))return [220,232,226];
-    if(/desert|badlands/.test(id))return id.includes("badlands")?[182,108,64]:[220,200,134];
-    if(/jungle/.test(id))return [48,125,67];if(/swamp/.test(id))return [78,112,83];
-    if(/forest|taiga/.test(id))return [64,119,73];if(/peak|mountain|slope/.test(id))return [145,153,143];
-    if(/cave|dark/.test(id))return [95,91,119];if(/savanna/.test(id))return [164,174,87];
-    return [116,165,95];
-  }
   root.WgeRenderer={create,biomeColor,sampleStep};
   if(typeof module!=="undefined")module.exports=root.WgeRenderer;
 })(globalThis);
