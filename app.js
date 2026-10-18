@@ -1,59 +1,60 @@
 ﻿const DEFAULT_CONFIG = {
-  enabled: true,
-  outer_ocean: "minecraft:deep_ocean",
-  entries: [
-    { type: "island", name: "Spawn Island", x: 0, z: 0, radius: 880, shape_power: 2.2, roughness: 0.18, shore_width: 0.18, temperature: "temperate", biome_patch_size: 768, exclude_biomes: ["minecraft:desert", "minecraft:savanna"], noise: { seed: "spawn" } },
-    {
-      type: "ocean",
-      name: "Central Strait",
-      x: 360,
-      z: 80,
-      radius_x: 230,
-      radius_z: 980,
-      rotation: 24,
-      shape_power: 1.35,
-      roughness: 0.18,
-      shore_width: 0.22,
-      temperature: "standard",
-      biome_patch_size: 1024,
-      noise: { seed: "central_strait", scale: 3.4 },
-    },
-    {
-      type: "island",
-      name: "Eastern Highlands",
-      x: 1500,
-      z: -430,
-      radius: 620,
-      stretch_x: 1.12,
-      stretch_z: 1.32,
-      rotation: 18,
-      shape_power: 2.8,
-      roughness: 0.2,
-      noise: { seed: "east_highlands", scale: 3.6 },
-    },
-    {
-      type: "archipelago",
-      name: "Western Archipelago",
-      x: -1700,
-      z: 720,
-      radius: 1100,
-      count: 16,
-      min_radius: 90,
-      max_radius: 250,
-      spread: 0.88,
-      spacing: 1.15,
-      min_stretch: 0.7,
-      max_stretch: 1.65,
-      min_shape_power: 1.2,
-      max_shape_power: 3.7,
-      roughness: 0.22,
-      shore_width: 0.17,
-      temperature: "warm",
-      biome_patch_size: 1024,
-      exclude_biomes: ["#minecraft:is_badlands"],
-      noise: { seed: "western_archipelago" },
-    },
-  ],
+    "outer_ocean":  "minecraft:deep_ocean",
+    "entries":  [
+                    {
+                        "type":  "archipelago",
+                        "name":  "Spawn Archipelago",
+                        "x":  0,
+                        "z":  0,
+                        "radius":  1450,
+                        "count":  24,
+                        "min_radius":  75,
+                        "max_radius":  260,
+                        "spread":  0.95,
+                        "spacing":  1.08,
+                        "min_stretch":  0.65,
+                        "max_stretch":  1.75,
+                        "min_shape_power":  1.2,
+                        "max_shape_power":  3.8,
+                        "roughness":  0.22,
+                        "shore_width":  0.18,
+                        "temperature":  "standard",
+                        "biome_patch_size":  768,
+                        "noise":  {
+                                      "seed":  "spawn_archipelago"
+                                  }
+                    },
+                    {
+                        "type":  "island",
+                        "name":  "Northern Island",
+                        "x":  1600,
+                        "z":  -1350,
+                        "radius":  420,
+                        "stretch_x":  1.4,
+                        "stretch_z":  0.82,
+                        "rotation":  -28,
+                        "shape_power":  2.3,
+                        "roughness":  0.2,
+                        "noise":  {
+                                      "seed":  "north_island"
+                                  }
+                    },
+                    {
+                        "type":  "island",
+                        "name":  "Southern Island",
+                        "x":  -1500,
+                        "z":  1450,
+                        "radius":  470,
+                        "stretch_x":  0.9,
+                        "stretch_z":  1.45,
+                        "rotation":  18,
+                        "shape_power":  2.6,
+                        "roughness":  0.2,
+                        "noise":  {
+                                      "seed":  "south_island"
+                                  }
+                    }
+                ]
 };
 
 const {parseConfig, parseSeed, clamp, FULL_OCEAN_MASK, LAND_MASK, BEACH_START_MASK, DEEP_OCEAN_MASK}=WgeMask;
