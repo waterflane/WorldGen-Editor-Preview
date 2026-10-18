@@ -10,7 +10,7 @@ Companion map editor for [WorldGen Editor](https://github.com/waterflane/WorldGe
 The exact engine currently supports Minecraft + WGE, without loading third-party biome mods.
 The default height mode is **Base surface**. Optional relief shading reuses the calculated heights. Y=300/64/0/-32 show actual slices, which can differ from surface biomes.
 Rivers use their biome colors. Feature-generated lakes, structures, trees and other decoration are outside this base-generation preview.
-The legend lists visible biomes; hovering the map displays the sampled biome ID and Y. The status shows sampling distance: overview pixels represent a grid, and one-block sampling is required for detailed boundaries.
+Hovering the map shows a small tooltip with the sampled biome name. The status shows sampling distance: overview pixels represent a grid, and one-block sampling is required for detailed boundaries.
 
 ## Start the Java map
 

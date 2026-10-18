@@ -74,9 +74,9 @@ const labelsToggle = document.querySelector("#labelsToggle");
 const thresholdToggle = document.querySelector("#thresholdToggle");
 const childLabelsToggle = document.querySelector("#childLabelsToggle");
 const qualitySelect = document.querySelector("#qualitySelect");
-const legend=document.querySelector(".legend");
-const maskLegend=legend.innerHTML;
-let lastBiomeMap=null,legendKey="";
+const biomeTooltip=document.querySelector("#biomeTooltip");
+let lastBiomeMap=null;
+let hoveredPoint=null;
 
 const fallbackRenderer = WgeRenderer.create();
 let compiled = [];
@@ -176,12 +176,8 @@ canvas.addEventListener("pointerdown", (event) => {
 canvas.addEventListener("pointermove", (event) => {
   const world = screenToWorld(event.offsetX, event.offsetY);
   coords.textContent = `x ${Math.round(world.x)}, z ${Math.round(world.z)}`;
-  if(lastBiomeMap && !pointer.down && lastRenderedView?.x===view.x && lastRenderedView?.z===view.z && lastRenderedView?.blocksPerPixel===view.blocksPerPixel){
-    const rect=canvas.getBoundingClientRect();
-    const px=Math.floor(event.offsetX/rect.width*lastBiomeMap.width),py=Math.floor(event.offsetY/rect.height*lastBiomeMap.height);
-    const index=py*lastBiomeMap.width+px,id=lastBiomeMap.palette[lastBiomeMap.indices[index]];
-    if(id)coords.textContent+=` | ${id} | Y ${lastBiomeMap.heights[index]}`;
-  }
+  hoveredPoint=event.pointerType==="touch" ? null : {x:event.clientX,y:event.clientY};
+  updateBiomeTooltip();
   if (!pointer.down) return;
   view.x = pointer.startX - (event.clientX - pointer.x) * view.blocksPerPixel;
   view.z = pointer.startZ - (event.clientY - pointer.y) * view.blocksPerPixel;
@@ -197,8 +193,15 @@ canvas.addEventListener("pointerup", (event) => {
 
 canvas.addEventListener("pointercancel", () => {
   pointer.down = false;
+  hoveredPoint=null;
+  biomeTooltip.hidden=true;
   canvas.classList.remove("dragging");
   endInteractionSoon();
+});
+
+canvas.addEventListener("pointerleave", () => {
+  hoveredPoint=null;
+  biomeTooltip.hidden=true;
 });
 
 canvas.addEventListener("wheel", (event) => {
@@ -235,6 +238,7 @@ function applyConfig() {
 
 function beginInteraction() {
   isInteracting = true;
+  biomeTooltip.hidden=true;
   clearTimeout(idleRenderTimer);
 }
 
@@ -242,6 +246,7 @@ function endInteractionSoon() {
   clearTimeout(idleRenderTimer);
   idleRenderTimer = setTimeout(() => {
     isInteracting = false;
+    updateBiomeTooltip();
     requestRender("final");
   }, 140);
 }
@@ -324,19 +329,10 @@ function handleWorkerMessage(event) {
     } else {
       lastRenderElapsedMs = message.elapsedMs;
       lastBiomeMap=message.biomesBuffer ? {...message,indices:new Uint16Array(message.biomesBuffer),heights:new Int16Array(message.heightsBuffer)} : null;
-      const nextLegend=lastBiomeMap ? message.palette.join(",") : "mask";
-      if(nextLegend!==legendKey){
-        legendKey=nextLegend;
-        if(!lastBiomeMap)legend.innerHTML=maskLegend;
-        else {
-          legend.replaceChildren();
-          for(const id of message.palette){const entry=document.createElement("span"),swatch=document.createElement("i");
-            swatch.style.background=`rgb(${WgeRenderer.biomeColor(id).join(",")})`;entry.append(swatch,document.createTextNode(id.replace("minecraft:","").replaceAll("_"," ")));legend.append(entry);}
-        }
-      }
       setState(message.interactive ? "refining" : "ready",false);
       ensureCanvasSize(message.cssWidth, message.cssHeight);
       drawScaledMap(new ImageData(new Uint8ClampedArray(message.buffer), message.width, message.height), message.cssWidth, message.cssHeight, message.view);
+      updateBiomeTooltip();
       drawPostRenderOverlays();
       updateRenderLabels(message.exact, "worker", message.interactive);
     }
@@ -369,9 +365,29 @@ function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact,sampli
 
 function clearRenderedMap(){
   lastBiomeMap=null;lastRenderedView=null;lastRenderedSize=null;
-  legendKey="";legend.replaceChildren();statsLabel.textContent="Awaiting map data";
+  biomeTooltip.hidden=true;statsLabel.textContent="Awaiting map data";
   coords.textContent=`x ${formatNumber(view.x)}, z ${formatNumber(view.z)}`;
   fillPreviewBackground();
+}
+
+function updateBiomeTooltip(){
+  biomeTooltip.hidden=true;
+  if(!hoveredPoint || !lastBiomeMap || pointer.down || isInteracting ||
+      lastRenderedView?.x!==view.x || lastRenderedView?.z!==view.z ||
+      lastRenderedView?.blocksPerPixel!==view.blocksPerPixel)return;
+  const rect=canvas.getBoundingClientRect();
+  const x=hoveredPoint.x-rect.left,y=hoveredPoint.y-rect.top;
+  if(x<0 || y<0 || x>=rect.width || y>=rect.height)return;
+  const px=Math.floor(x/rect.width*lastBiomeMap.width),py=Math.floor(y/rect.height*lastBiomeMap.height);
+  const id=lastBiomeMap.palette[lastBiomeMap.indices[py*lastBiomeMap.width+px]];
+  if(!id)return;
+  biomeTooltip.textContent=id.replace(/^minecraft:/,"").replaceAll("_"," ");
+  biomeTooltip.hidden=false;
+  const width=biomeTooltip.offsetWidth,height=biomeTooltip.offsetHeight;
+  const left=x+14+width<=rect.width-8 ? x+14 : x-width-14;
+  const top=y+18+height<=rect.height-8 ? y+18 : y-height-14;
+  biomeTooltip.style.left=`${Math.max(8,left)}px`;
+  biomeTooltip.style.top=`${Math.max(8,top)}px`;
 }
 
 function drawScaledMap(image, cssWidth, cssHeight, renderedView) {

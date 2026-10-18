@@ -241,8 +241,7 @@ h2 {
   cursor: grabbing;
 }
 
-.hud,
-.legend {
+.hud {
   position: absolute;
   left: 16px;
   display: flex;
@@ -262,41 +261,20 @@ h2 {
   top: 16px;
 }
 
-.legend {
-  bottom: 16px;
-}
-
-.legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.legend i {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  display: inline-block;
-}
-
-.deep {
-  background: #163f68;
-}
-
-.ocean {
-  background: #2676a6;
-}
-
-.beach {
-  background: #d8ca8e;
-}
-
-.land {
-  background: #73a760;
-}
-
-.core {
-  background: #477b4f;
+.biome-tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(14, 18, 20, 0.92);
+  color: var(--text);
+  padding: 6px 9px;
+  font-size: 12px;
 }
 
 @media (max-width: 900px) {
@@ -323,5 +301,3 @@ h2 {
   .app { grid-template-columns: 1fr; grid-template-rows: 42vh 58vh; }
   .stage { height: 58vh; }
 }
-
-.legend { max-width: calc(100% - 32px); max-height: 112px; overflow: auto; }
