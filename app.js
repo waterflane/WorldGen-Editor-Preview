@@ -110,6 +110,8 @@ let latestRenderSequence = 0;
 let workerBusy = false;
 let pendingWorkerMessage = null;
 let lastRenderElapsedMs = 0;
+let renderStartedAt = 0;
+let firstFrameElapsedMs = null;
 let lastRenderedView = null;
 let lastRenderedSize = null;
 let isInteracting = false;
@@ -314,6 +316,7 @@ function render() {
 
 function queueWorkerRender(message) {
   latestRenderSequence=message.id;
+  startRenderTiming(message.id);
   workerBusy=true;
   renderWorker.postMessage(message);
 }
@@ -327,7 +330,8 @@ function handleWorkerMessage(event) {
       clearRenderedMap();
       setState(message.error, true);
     } else {
-      lastRenderElapsedMs = message.elapsedMs;
+      lastRenderElapsedMs = Math.round(performance.now()-renderStartedAt);
+      firstFrameElapsedMs??=lastRenderElapsedMs;
       lastBiomeMap=message.biomesBuffer ? {...message,indices:new Uint16Array(message.biomesBuffer),heights:new Int16Array(message.heightsBuffer)} : null;
       setState(message.interactive ? "refining" : "ready",false);
       ensureCanvasSize(message.cssWidth, message.cssHeight);
@@ -335,6 +339,9 @@ function handleWorkerMessage(event) {
       updateBiomeTooltip();
       drawPostRenderOverlays();
       updateRenderLabels(message.exact, "worker", message.interactive);
+      canvas.dataset.firstFrameMs=String(firstFrameElapsedMs);
+      canvas.dataset.totalMs=String(lastRenderElapsedMs);
+      canvas.dataset.renderComplete=String(!message.interactive);
     }
   }
 
@@ -350,17 +357,26 @@ function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact,sampli
   const message={id:++renderSequence,configText:appliedConfigText,seedText:appliedSeedText,view:{...view},width,height,cssWidth,cssHeight,quality,
     exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError,samplingQuality,interactive};
   latestRenderSequence=message.id;
+  startRenderTiming(message.id);
   fallbackRenderer.cancel(message.id);
   const active=()=>message.id===latestRenderSequence;
   void(async()=>{
     let preview;
     if(message.source==="biomes"&&!interactive){
-      preview=await fallbackRenderer.render({...message,samplingQuality:Math.min(message.quality,32/Math.max(cssWidth,cssHeight))},active);
+      preview=await fallbackRenderer.render({...message,samplingQuality:Math.min(message.quality,32/Math.max(cssWidth,cssHeight))},active,
+        {onProgress:frame=>{if(active())handleWorkerMessage({data:frame});}});
       if(preview&&active())handleWorkerMessage({data:{...preview,interactive:true}});
     }
     const result=await fallbackRenderer.render(message,active,{preview,onProgress:frame=>{if(active())handleWorkerMessage({data:frame});}});
     if(result&&active())handleWorkerMessage({data:result});
   })().catch(error=>{if(active()){clearRenderedMap();setState(error.message,true);}});
+}
+
+function startRenderTiming(id){
+  renderStartedAt=performance.now();firstFrameElapsedMs=null;
+  canvas.dataset.renderId=String(id);
+  canvas.dataset.renderComplete="false";
+  delete canvas.dataset.firstFrameMs;delete canvas.dataset.totalMs;
 }
 
 function clearRenderedMap(){
@@ -454,8 +470,9 @@ function updateRenderLabels(exact, engine, interactive) {
   const structures = (compiled.sourceSummaries || compiled).length;
   const childCount = compiled.length - structures;
   const quality = mapSource.value === "biomes" ? "biomes" : "exact mask";
-  const sampling=lastBiomeMap ? ` | sample ${lastBiomeMap.sampleStep} blocks${lastBiomeMap.targetStep ? ` → ${lastBiomeMap.targetStep}` : ""}` : "";
-  statsLabel.textContent = `${structures} structures${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${sampling}`;
+  const sampling=lastBiomeMap ? ` | sample ${lastBiomeMap.sampleStep} blocks${lastBiomeMap.targetStep && lastBiomeMap.targetStep!==lastBiomeMap.sampleStep ? ` → ${lastBiomeMap.targetStep}` : ""}` : "";
+  const timing=firstFrameElapsedMs===null ? "" : ` (first ${firstFrameElapsedMs} ms)`;
+  statsLabel.textContent = `${structures} structures${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${timing}${sampling}`;
 }
 
 function drawOverlays(width, height) {

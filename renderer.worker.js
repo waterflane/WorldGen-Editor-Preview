@@ -13,7 +13,9 @@ async function drain(){
       let preview;
       if(message.source==="biomes"&&!message.interactive){
         const coarse={...message,samplingQuality:Math.min(message.quality,32/Math.max(message.cssWidth,message.cssHeight))};
-        preview=await renderer.render(coarse,()=>message.id===latest);
+        preview=await renderer.render(coarse,()=>message.id===latest,{onProgress:frame=>{
+          if(message.id===latest)self.postMessage(frame,[frame.buffer,frame.biomesBuffer,frame.heightsBuffer,frame.resolutionBuffer]);
+        }});
         if(preview&&message.id===latest)self.postMessage({...preview,interactive:true});
       }
       const result=await renderer.render(message,()=>message.id===latest,{preview,onProgress:frame=>{

@@ -73,7 +73,7 @@ test('zooming out keeps fine terrain and reuses samples across zoom levels',asyn
  const palette=['minecraft:ocean','minecraft:forest'];
  const indexAt=(x,z)=>(Math.floor(x/17)+Math.floor(z/23))&1;
  global.fetch=async(url,options)=>{
-  if(url==='/api/session')return {ok:true,json:async()=>({session:'zoom',request_base:0})};
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'zoom',request_base:0,workers:6})};
   const q=JSON.parse(options.body);requests++;inFlight++;maximum=Math.max(maximum,inFlight);
   await new Promise(resolve=>setTimeout(resolve,2));inFlight--;
   const biomes=[],heights=[];
@@ -89,7 +89,7 @@ test('zooming out keeps fine terrain and reuses samples across zoom levels',asyn
   const coarseResolution=new Uint32Array(coarse.resolutionBuffer);
   assert.equal(coarse.width,base.width);assert.equal(coarseResolution[32*64+32],1,'the first overview must keep loaded detail');
   const result=await renderer.render({...base,view:{...base.view,blocksPerPixel:1.5}},()=>true);
-  assert.equal(maximum,4);assert.ok(requests-loaded<36,'covered coarse tiles should be derived from cached fine samples');
+  assert.equal(maximum,6,'follow the backend concurrency limit');assert.ok(requests-loaded<36,'covered coarse tiles should be derived from cached fine samples');
   const resolutions=new Uint32Array(result.resolutionBuffer),ids=new Uint16Array(result.biomesBuffer),heights=new Int16Array(result.heightsBuffer);
   for(let row=0;row<64;row++)for(let col=0;col<64;col++){
    const x=16+col*1.5,z=-112+row*1.5;
@@ -164,4 +164,28 @@ test('fine biome tiles progressively replace coarse data without changing final 
    const i=row*target.width+col;assert.equal(result.palette[ids[i]],palette[indexAt(x,z)]);assert.equal(heights[i],heightAt(x,z));
   }
  }finally{global.fetch=original;}
+});
+
+test('first coarse tile is visible before the rest finish, without inventing hover biomes',{timeout:2000},async()=>{
+ const original=global.fetch;let requests=0,frames=0,release;
+ const gate=new Promise(resolve=>release=resolve);
+ global.fetch=async(url,options)=>{
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'first-frame',request_base:0})};
+  const q=JSON.parse(options.body);
+  if(++requests>1)await gate;
+  return {ok:true,json:async()=>({palette:['minecraft:forest'],biomes:Array(q.size*q.size).fill(0),heights:Array(q.size*q.size).fill(80)})};
+ };
+ try{
+  const result=await create().render({...message(),source:'biomes',backendAvailable:true},()=>true,{onProgress:frame=>{
+   if(frames++===0){
+    const ids=new Uint16Array(frame.biomesBuffer);
+    assert.ok(ids.includes(0),'the completed tile must be drawn');
+    assert.ok(ids.includes(65535),'unfinished tiles must not claim a biome');
+    assert.equal(frame.palette[65535],undefined);
+    release();
+   }
+  }});
+  assert.ok(frames>0,'the first pass must stream frames');
+  assert.ok(!new Uint16Array(result.biomesBuffer).includes(65535),'completed map must have no missing samples');
+ }finally{release();global.fetch=original;}
 });

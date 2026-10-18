@@ -49,6 +49,12 @@
       const palette=[],paletteIndices=new Map();
       const biomePixels=java?new Uint16Array(message.width*message.height):null;
       const heightPixels=java?new Int16Array(message.width*message.height):null;
+      if(java){
+        // Unfinished coarse tiles must stay neutral, including their hover data.
+        biomePixels.fill(65535);
+        const neutral=Uint8Array.of(48,53,60,255);
+        new Uint32Array(data.buffer).fill(new Uint32Array(neutral.buffer)[0]);
+      }
       if(java&&preview){
         const pixels=new Uint8ClampedArray(preview.buffer),ids=new Uint16Array(preview.biomesBuffer),ys=new Int16Array(preview.heightsBuffer);
         const previousResolutions=preview.resolutionBuffer?new Uint32Array(preview.resolutionBuffer):null;
@@ -169,7 +175,7 @@
         const c=tile.cache,id=tileId(c.step,Math.floor(c.x/(size*c.step)),Math.floor(c.z/(size*c.step)));
         tiles.delete(id);tiles.set(id,tile);
       }
-      const jobs=new Map(),parallel=java?4:1;
+      const jobs=new Map(),parallel=java?Math.max(1,Math.min(6,Number.isInteger(session.workers)?session.workers:4)):1;
       const schedule=index=>{
         if(index>=visible.length||jobs.has(index))return;
         jobs.set(index,tileAt(...visible[index]).then(tile=>({tile}),error=>({error})));
@@ -180,10 +186,10 @@
         if(!active())return null;if(error)throw error;if(!tile)return null;
         schedule(i+parallel);
         if(!await paint(tile))return null;
-        if(java&&preview&&onProgress&&performance.now()-lastProgress>=250){
-          onProgress({...message,interactive:true,elapsedMs:Math.round(performance.now()-started),
+        if(java&&onProgress&&(i===0||performance.now()-lastProgress>=125)){
+          onProgress({...message,interactive:true,partial:true,elapsedMs:Math.round(performance.now()-started),
             buffer:data.slice().buffer,biomesBuffer:biomePixels.slice().buffer,heightsBuffer:heightPixels.slice().buffer,
-            palette:[...palette],resolutionBuffer:resolutions.slice().buffer,sampleStep:preview.sampleStep,targetStep:step,generationVersion,exact:true});
+            palette:[...palette],resolutionBuffer:resolutions.slice().buffer,sampleStep:preview?.sampleStep??step,targetStep:step,generationVersion,exact:true});
           lastProgress=performance.now();
         }
       }
