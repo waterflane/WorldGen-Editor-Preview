@@ -267,7 +267,8 @@ function render() {
   const rect = canvas.getBoundingClientRect();
   const requestedQuality = Number(qualitySelect.value) || 0.65;
   const interactive = renderMode === "interactive" || isInteracting;
-  const quality = interactive ? Math.min(0.20, requestedQuality) : requestedQuality;
+  const quality = requestedQuality;
+  const samplingQuality = interactive ? Math.min(0.20, requestedQuality) : requestedQuality;
   renderExactNoise = true;
   const cssWidth = Math.max(1, Math.floor(rect.width));
   const cssHeight = Math.max(1, Math.floor(rect.height));
@@ -290,6 +291,7 @@ function render() {
       cssWidth,
       cssHeight,
       quality,
+      samplingQuality,
       exact: true,
       shores: thresholdToggle.checked,
       source: mapSource.value,
@@ -302,7 +304,7 @@ function render() {
     return;
   }
 
-  renderOnMainThread(width, height, cssWidth, cssHeight, quality, renderExactNoise);
+  renderOnMainThread(width, height, cssWidth, cssHeight, quality, renderExactNoise, samplingQuality, interactive);
 }
 
 function queueWorkerRender(message) {
@@ -348,17 +350,16 @@ function handleWorkerMessage(event) {
 }
 
 
-function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact) {
+function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact,samplingQuality=quality,interactive=false) {
   const message={id:++renderSequence,configText:appliedConfigText,seedText:appliedSeedText,view:{...view},width,height,cssWidth,cssHeight,quality,
-    exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError};
+    exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError,samplingQuality,interactive};
   latestRenderSequence=message.id;
   fallbackRenderer.cancel(message.id);
   const active=()=>message.id===latestRenderSequence;
   void(async()=>{
     let preview;
-    if(message.source==="biomes"){
-      const quality=Math.min(message.quality,32/Math.max(cssWidth,cssHeight));
-      preview=await fallbackRenderer.render({...message,quality,width:Math.max(1,Math.floor(cssWidth*quality)),height:Math.max(1,Math.floor(cssHeight*quality))},active);
+    if(message.source==="biomes"&&!interactive){
+      preview=await fallbackRenderer.render({...message,samplingQuality:Math.min(message.quality,32/Math.max(cssWidth,cssHeight))},active);
       if(preview&&active())handleWorkerMessage({data:{...preview,interactive:true}});
     }
     const result=await fallbackRenderer.render(message,active,{preview,onProgress:frame=>{if(active())handleWorkerMessage({data:frame});}});

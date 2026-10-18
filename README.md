@@ -47,6 +47,8 @@ A disabled or empty offline mask is displayed neutrally, because the real mod de
 Rendering uses a bounded world-space tile cache, a coarse first pass for Java maps, and cancellation of obsolete work. Dragging reuses the last image while new tiles arrive. Reopening an area reuses computed results.
 **Balanced** is selected by default and uses up to 256 samples along the longer side; **Fast** uses up to 128. **Full exact** removes the overview sample cap and follows the window's pixel resolution (one-block sampling when fully zoomed in). More detail requires more Java samples. Finished tiles progressively replace the coarse map, starting near the center, while the remaining area continues to refine.
 Zooming immediately scales the last image while the new view is computed. Changing seed, configuration or height mode clears the old map; a Java error is displayed instead of presenting old pixels as a new result.
+Loaded tiles keep their world coordinates and sampling level across zoom changes. Detailed terrain remains visible when zooming out, including during the initial coarse pass; coarser tiles cannot overwrite it. Coarse samples are derived from fine tiles where possible, and returning to a cached area avoids Java requests. The in-memory cache is bounded to 8192 tiles and lasts until the page is reloaded or the configuration changes.
+Up to four visible tiles are requested concurrently. The Java engine limits CPU generation to at most four workers, leaving a processor available when possible, and still cancels obsolete work between samples. Surface mode includes exact base-height calculation; fixed Y slices avoid that extra work and are substantially faster.
 
 ## Tests
 

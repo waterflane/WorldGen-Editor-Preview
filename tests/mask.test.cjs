@@ -54,17 +54,53 @@ test('world snapshots retain legacy versions and per-world enable flag',()=>{
 });
 
 test('HTTP work can be aborted while the Java tile is still computing',async()=>{
- const original=global.fetch;let tileStarted,active=true,cancelled=false;
+ const original=global.fetch;let tileStarted,active=true,cancelled=false,aborted=0;
  const started=new Promise(resolve=>tileStarted=resolve);
  global.fetch=async(url,options)=>{
   if(url==='/api/session')return {ok:true,json:async()=>({session:'test',request_base:0})};
   if(url==='/api/cancel'){cancelled=true;return {ok:true};}
-  tileStarted();return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('cancelled','AbortError'))));
+  tileStarted();return new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>{aborted++;reject(new DOMException('cancelled','AbortError'));}));
  };
  try{
   const renderer=create(),task=renderer.render({...message(),source:'biomes',backendAvailable:true},()=>active);
   await started;const now=performance.now();active=false;renderer.cancel(2);
-  await assert.rejects(task,{name:'AbortError'});assert.ok(cancelled);assert.ok(performance.now()-now<100);
+  assert.equal(await task,null);assert.equal(aborted,4);assert.ok(cancelled);assert.ok(performance.now()-now<100);
+ }finally{global.fetch=original;}
+});
+
+test('zooming out keeps fine terrain and reuses samples across zoom levels',async()=>{
+ const original=global.fetch;let requests=0,inFlight=0,maximum=0;
+ const palette=['minecraft:ocean','minecraft:forest'];
+ const indexAt=(x,z)=>(Math.floor(x/17)+Math.floor(z/23))&1;
+ global.fetch=async(url,options)=>{
+  if(url==='/api/session')return {ok:true,json:async()=>({session:'zoom',request_base:0})};
+  const q=JSON.parse(options.body);requests++;inFlight++;maximum=Math.max(maximum,inFlight);
+  await new Promise(resolve=>setTimeout(resolve,2));inFlight--;
+  const biomes=[],heights=[];
+  for(let row=0;row<q.size;row++)for(let col=0;col<q.size;col++){
+   const x=q.x+col*q.step,z=q.z+row*q.step;biomes.push(indexAt(x,z));heights.push(x+z);
+  }
+  return {ok:true,json:async()=>({palette,biomes,heights})};
+ };
+ try{
+  const renderer=create(),base={...message(),source:'biomes',backendAvailable:true,cssWidth:64,cssHeight:64,width:64,height:64,quality:1,view:{x:64,z:-64,blocksPerPixel:1}};
+  await renderer.render(base,()=>true);const loaded=requests;
+  const coarse=await renderer.render({...base,samplingQuality:.125,view:{...base.view,blocksPerPixel:1.5}},()=>true);
+  const coarseResolution=new Uint32Array(coarse.resolutionBuffer);
+  assert.equal(coarse.width,base.width);assert.equal(coarseResolution[32*64+32],1,'the first overview must keep loaded detail');
+  const result=await renderer.render({...base,view:{...base.view,blocksPerPixel:1.5}},()=>true);
+  assert.equal(maximum,4);assert.ok(requests-loaded<36,'covered coarse tiles should be derived from cached fine samples');
+  const resolutions=new Uint32Array(result.resolutionBuffer),ids=new Uint16Array(result.biomesBuffer),heights=new Int16Array(result.heightsBuffer);
+  for(let row=0;row<64;row++)for(let col=0;col<64;col++){
+   const x=16+col*1.5,z=-112+row*1.5;
+   if(x>=32&&x<96&&z>=-96&&z<-32){
+    const i=row*64+col;assert.equal(resolutions[i],1,'loaded relief was replaced by coarser data');
+    assert.equal(result.palette[ids[i]],palette[indexAt(Math.floor(x),Math.floor(z))]);
+    assert.equal(heights[i],Math.floor(x)+Math.floor(z));
+   }
+  }
+  const beforeReturn=requests;await renderer.render(base,()=>true);assert.equal(requests,beforeReturn,'returning to the loaded area must not request tiles');
+  await renderer.render({...base,seedText:'1'},()=>true);assert.ok(requests>beforeReturn,'changing the seed must invalidate retained terrain');
  }finally{global.fetch=original;}
 });
 
