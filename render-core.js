@@ -131,8 +131,29 @@
       const cx=(tx0+tx1)/2,cz=(tz0+tz1)/2;
       visible.sort((a,b)=>(a[0]-cx)**2+(a[1]-cz)**2-(b[0]-cx)**2-(b[1]-cz)**2);
       let renderBudget=performance.now(),lastProgress=renderBudget;
+      const emitted=new Set(),visualTiles=[];
+      function colorAt(tile,i){
+        if(!java){
+          const value=tile.values[i];let color=inactive?[48,53,60]:maskColor(value);
+          if(!inactive&&message.shores&&(Math.abs(value-.50)<.012||Math.abs(value-.58)<.012))color=color.map(v=>Math.round(v*.55+240*.45));
+          return color;
+        }
+        let color=biomeColor(tile.palette[tile.biomes[i]]);
+        if(includeHeights){
+          const h=tile.heights[i],left=tile.heights[i%size>0?i-1:i],up=tile.heights[i>=size?i-size:i];
+          const shade=Math.max(.60,Math.min(1.25,1+(left+up-2*h)/Math.max(tile.cache.step,4)*.07));
+          color=color.map(v=>Math.min(255,Math.round(v*shade)));
+        }
+        return color;
+      }
       async function paint(tile){
         const cached=tile.cache,level=cached.step,span=cached.size*level;
+        if(!emitted.has(tile)){
+          emitted.add(tile);
+          const pixels=new Uint8ClampedArray(size*size*4);
+          for(let i=0;i<size*size;i++){pixels.set(colorAt(tile,i),i*4);pixels[i*4+3]=255;}
+          visualTiles.push({x:cached.x,z:cached.z,step:level,size,buffer:pixels.buffer});
+        }
         const tx=Math.floor(cached.x/span),tz=Math.floor(cached.z/span);
         const col0=Math.max(0,Math.floor((cached.x-left)/worldPerPixel)-1),col1=Math.min(message.width,Math.ceil((cached.x+span-left)/worldPerPixel)+1);
         const row0=Math.max(0,Math.floor((cached.z-top)/worldPerPixel)-1),row1=Math.min(message.height,Math.ceil((cached.z+span-top)/worldPerPixel)+1);
@@ -145,20 +166,12 @@
             const gx=Math.floor(x/level),gz=Math.floor(z/level);
             if(Math.floor(gx/size)!==tx||Math.floor(gz/size)!==tz)continue;
             const i=(gz-tz*size)*size+gx-tx*size;
-            let color;
+            const color=colorAt(tile,i);
             if(java){
               const biome=tile.palette[tile.biomes[i]];
               let index=paletteIndices.get(biome);
               if(index===undefined){index=palette.length;palette.push(biome);paletteIndices.set(biome,index);}
               biomePixels[row*message.width+col]=index;heightPixels[row*message.width+col]=tile.heights[i];
-              color=biomeColor(biome);
-              if(message.relief&&message.heightMode==="surface"){
-                const h=tile.heights[i],left=tile.heights[i%size>0?i-1:i],up=tile.heights[i>=size?i-size:i];
-                const shade=Math.max(.60,Math.min(1.25,1+(left+up-2*h)/Math.max(level,4)*.07));color=color.map(v=>Math.min(255,Math.round(v*shade)));
-              }
-            }else{
-              const value=tile.values[i];color=inactive?[48,53,60]:maskColor(value);
-              if(!inactive&&message.shores&&(Math.abs(value-.50)<.012||Math.abs(value-.58)<.012))color=color.map(v=>Math.round(v*.55+240*.45));
             }
             const offset=(row*message.width+col)*4;data[offset]=color[0];data[offset+1]=color[1];data[offset+2]=color[2];data[offset+3]=255;
             resolutions[pixel]=level;
@@ -190,6 +203,7 @@
         if(!await paint(tile))return null;
         if(java&&onProgress&&(i===0||performance.now()-lastProgress>=125)){
           onProgress({...message,interactive:true,partial:true,elapsedMs:Math.round(performance.now()-started),
+            visualTiles:visualTiles.splice(0),
             buffer:data.slice().buffer,biomesBuffer:biomePixels.slice().buffer,heightsBuffer:heightPixels.slice().buffer,
             palette:[...palette],resolutionBuffer:resolutions.slice().buffer,sampleStep:preview?.sampleStep??step,targetStep:step,generationVersion,exact:true});
           lastProgress=performance.now();
@@ -201,7 +215,7 @@
         for(let i=0;i<biomePixels.length;i++)biomePixels[i]=remap[biomePixels[i]];
         palette.length=0;palette.push(...finalPalette);
       }
-      return {...message,elapsedMs:Math.round(performance.now()-started),buffer:data.buffer,biomesBuffer:biomePixels?.buffer,heightsBuffer:heightPixels?.buffer,resolutionBuffer:java?resolutions.buffer:undefined,palette,sampleStep:step,generationVersion,exact:true};
+      return {...message,visualTiles,elapsedMs:Math.round(performance.now()-started),buffer:data.buffer,biomesBuffer:biomePixels?.buffer,heightsBuffer:heightPixels?.buffer,resolutionBuffer:java?resolutions.buffer:undefined,palette,sampleStep:step,generationVersion,exact:true};
     }
     function cancel(nextId){
       for(const controller of controllers)controller.abort();controllers.clear();

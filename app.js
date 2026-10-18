@@ -60,8 +60,11 @@
 const {parseConfig, parseSeed, clamp, FULL_OCEAN_MASK, LAND_MASK, BEACH_START_MASK, DEEP_OCEAN_MASK}=WgeMask;
 const canvas = document.querySelector("#previewCanvas");
 const ctx = canvas.getContext("2d", { alpha: false });
-const renderBufferCanvas = document.createElement("canvas");
-const renderBufferCtx = renderBufferCanvas.getContext("2d", { alpha: false });
+const visualCache=WgeTileCache.create(tile=>{
+  const image=document.createElement("canvas");image.width=tile.size;image.height=tile.size;
+  image.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(tile.buffer),tile.size,tile.size),0,0);
+  return image;
+});
 const jsonInput = document.querySelector("#jsonInput");
 const seedInput = document.querySelector("#seedInput");
 const fileInput = document.querySelector("#fileInput");
@@ -114,10 +117,8 @@ let lastRenderElapsedMs = 0;
 let renderStartedAt = 0;
 let firstFrameElapsedMs = null;
 let lastRenderedView = null;
-let lastRenderedSize = null;
 let isInteracting = false;
 let idleRenderTimer = 0;
-let renderMode = "final";
 
 if (typeof Worker !== "undefined") {
   try {
@@ -191,7 +192,7 @@ canvas.addEventListener("pointerup", (event) => {
   pointer.down = false;
   canvas.classList.remove("dragging");
   canvas.releasePointerCapture(event.pointerId);
-  endInteractionSoon();
+  endInteractionSoon(0);
 });
 
 canvas.addEventListener("pointercancel", () => {
@@ -199,7 +200,7 @@ canvas.addEventListener("pointercancel", () => {
   hoveredPoint=null;
   biomeTooltip.hidden=true;
   canvas.classList.remove("dragging");
-  endInteractionSoon();
+  endInteractionSoon(0);
 });
 
 canvas.addEventListener("pointerleave", () => {
@@ -240,52 +241,53 @@ function applyConfig() {
 }
 
 function beginInteraction() {
+  if(!isInteracting){
+    latestRenderSequence=++renderSequence;
+    if(renderWorker)renderWorker.postMessage({id:latestRenderSequence,cancelOnly:true});
+    else fallbackRenderer.cancel(latestRenderSequence);
+  }
   isInteracting = true;
+  canvas.dataset.interacting="true";
   biomeTooltip.hidden=true;
   clearTimeout(idleRenderTimer);
 }
 
-function endInteractionSoon() {
+function endInteractionSoon(delay=120) {
   clearTimeout(idleRenderTimer);
   idleRenderTimer = setTimeout(() => {
+    if(pointer.down)return;
     isInteracting = false;
+    canvas.dataset.interacting="false";
     updateBiomeTooltip();
     requestRender("final");
-  }, 140);
+  }, delay);
 }
 
-function requestRender(mode = "final") {
-  if (mode === "interactive") {
-    renderMode = "interactive";
-  } else if (!isInteracting) {
-    renderMode = "final";
-  }
+function requestRender() {
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(() => {
     renderQueued = false;
-    if(isInteracting)drawDragPreview();
-    render();
+    if(isInteracting){drawDragPreview();setState("cached map",false);}
+    else render();
   });
 }
 
 function render() {
-  const identity=[appliedConfigText,appliedSeedText,mapSource.value,heightMode.value].join("\n");
+  const identity=[appliedConfigText,appliedSeedText,mapSource.value,heightMode.value,reliefToggle.checked,thresholdToggle.checked].join("\n");
   if(identity!==renderIdentity){renderIdentity=identity;clearRenderedMap();}
   const rect = canvas.getBoundingClientRect();
   const requestedQuality = Number(qualitySelect.value) || 0.65;
-  const interactive = renderMode === "interactive" || isInteracting;
+  const interactive = false;
   const quality = requestedQuality;
-  const samplingQuality = interactive ? Math.min(0.20, requestedQuality) : requestedQuality;
+  const samplingQuality = requestedQuality;
   renderExactNoise = true;
   const cssWidth = Math.max(1, Math.floor(rect.width));
   const cssHeight = Math.max(1, Math.floor(rect.height));
   const width = Math.max(1, Math.floor(cssWidth * quality));
   const height = Math.max(1, Math.floor(cssHeight * quality));
-  const resized = ensureCanvasSize(cssWidth, cssHeight);
-  if (resized) {
-    drawDragPreview();
-  }
+  ensureCanvasSize(cssWidth, cssHeight);
+  drawDragPreview();
 
   setState(mapSource.value === "biomes" ? "rendering biomes" : "rendering mask",false);
   if (renderWorker) {
@@ -336,9 +338,11 @@ function handleWorkerMessage(event) {
       lastBiomeMap=message.biomesBuffer ? {...message,indices:new Uint16Array(message.biomesBuffer),heights:new Int16Array(message.heightsBuffer)} : null;
       setState(message.interactive ? "refining" : "ready",false);
       ensureCanvasSize(message.cssWidth, message.cssHeight);
-      drawScaledMap(new ImageData(new Uint8ClampedArray(message.buffer), message.width, message.height), message.cssWidth, message.cssHeight, message.view);
+      visualCache.remember(message.visualTiles);
+      canvas.dataset.cachedTiles=String(visualCache.size());
+      lastRenderedView={...message.view};
+      drawDragPreview();
       updateBiomeTooltip();
-      drawPostRenderOverlays();
       updateRenderLabels(message.exact, "worker", message.interactive);
       canvas.dataset.firstFrameMs=String(firstFrameElapsedMs);
       canvas.dataset.totalMs=String(lastRenderElapsedMs);
@@ -381,7 +385,8 @@ function startRenderTiming(id){
 }
 
 function clearRenderedMap(){
-  lastBiomeMap=null;lastRenderedView=null;lastRenderedSize=null;
+  lastBiomeMap=null;lastRenderedView=null;visualCache.clear();
+  canvas.dataset.cachedTiles="0";
   biomeTooltip.hidden=true;statsLabel.textContent="Awaiting map data";
   coords.textContent=`x ${formatNumber(view.x)}, z ${formatNumber(view.z)}`;
   fillPreviewBackground();
@@ -407,44 +412,16 @@ function updateBiomeTooltip(){
   biomeTooltip.style.top=`${Math.max(8,top)}px`;
 }
 
-function drawScaledMap(image, cssWidth, cssHeight, renderedView) {
-  if (renderBufferCanvas.width !== image.width || renderBufferCanvas.height !== image.height) {
-    renderBufferCanvas.width = image.width;
-    renderBufferCanvas.height = image.height;
-  }
-  renderBufferCtx.imageSmoothingEnabled = false;
-  renderBufferCtx.putImageData(image, 0, 0);
-  lastRenderedView = renderedView ? { ...renderedView } : { ...view };
-  lastRenderedSize = { cssWidth, cssHeight };
-  drawBufferedMap(0, 0);
-}
-
-function drawBufferedMap(offsetX, offsetY, scale = 1) {
-  if (!lastRenderedSize || renderBufferCanvas.width <= 0 || renderBufferCanvas.height <= 0) {
-    return;
-  }
-
-  ctx.imageSmoothingEnabled = false;
-  fillPreviewBackground();
-  ctx.drawImage(renderBufferCanvas, offsetX, offsetY, lastRenderedSize.cssWidth * scale, lastRenderedSize.cssHeight * scale);
-}
-
 function fillPreviewBackground() {
   ctx.fillStyle = "#30353c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function drawDragPreview() {
-  if (!lastRenderedView || !lastRenderedSize) {
-    fillPreviewBackground();
-    drawPostRenderOverlays();
-    return;
-  }
-
-  const scale = lastRenderedView.blocksPerPixel / view.blocksPerPixel;
-  const offsetX = (canvas.width - lastRenderedSize.cssWidth * scale) / 2 + (lastRenderedView.x - view.x) / view.blocksPerPixel;
-  const offsetY = (canvas.height - lastRenderedSize.cssHeight * scale) / 2 + (lastRenderedView.z - view.z) / view.blocksPerPixel;
-  drawBufferedMap(offsetX, offsetY, scale);
+  const rect=canvas.getBoundingClientRect();
+  ensureCanvasSize(Math.max(1,Math.floor(rect.width)),Math.max(1,Math.floor(rect.height)));
+  fillPreviewBackground();
+  visualCache.draw(ctx,view,canvas.width,canvas.height);
   drawPostRenderOverlays();
 }
 

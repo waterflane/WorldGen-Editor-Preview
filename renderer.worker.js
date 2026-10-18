@@ -2,7 +2,7 @@ importScripts("mask-core.js", "render-core.js");
 const renderer=WgeRenderer.create();
 let latest=0,pending=null,running=false;
 self.onmessage=event=>{
-  latest=event.data.id;renderer.cancel(latest);pending=event.data;
+  latest=event.data.id;renderer.cancel(latest);pending=event.data.cancelOnly?null:event.data;
   if(!running)void drain();
 };
 async function drain(){

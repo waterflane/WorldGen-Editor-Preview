@@ -44,9 +44,9 @@ Click **Apply JSON** to commit edits to the preview. Invalid text leaves the las
 Enter the world's `/seed` value. Text seeds follow Minecraft's rules; a blank seed generates and displays a concrete random seed.
 A disabled or empty offline mask is displayed neutrally, because the real mod delegates to vanilla in that case.
 
-Rendering uses a bounded world-space tile cache, a coarse first pass for Java maps, and cancellation of obsolete work. Dragging reuses the last image while new tiles arrive. Reopening an area reuses computed results.
+Rendering uses bounded world-space tile caches, a coarse first pass for Java maps, and cancellation of obsolete work. While dragging or scrolling, the UI immediately draws cached tile images, including areas outside the last viewport, without starting generation. Releasing a drag starts generation immediately; wheel bursts settle for 120 ms first. Previously loaded detail stays visible throughout refinement. Each image and sample cache retains up to 8192 tiles in memory.
 **Balanced** is selected by default and uses up to 256 samples along the longer side; **Fast** uses up to 128. **Full exact** removes the overview sample cap and follows the window's pixel resolution (one-block sampling when fully zoomed in). More detail requires more Java samples. Finished tiles progressively replace the coarse map, starting near the center, while the remaining area continues to refine.
-Zooming immediately scales the last image while the new view is computed. Changing seed, configuration or height mode clears the old map; a Java error is displayed instead of presenting old pixels as a new result.
+Zooming immediately recomposes cached tiles at the new scale. Changing seed, configuration, height mode or shading clears the old images; a Java error is displayed instead of presenting old pixels as a new result.
 Loaded tiles keep their world coordinates and sampling level across zoom changes. Detailed terrain remains visible when zooming out, including during the initial coarse pass; coarser tiles cannot overwrite it. Coarse samples are derived from fine tiles where possible, and returning to a cached area avoids Java requests. The in-memory cache is bounded to 8192 tiles and lasts until the page is reloaded or the configuration changes.
 The browser requests 16x16-sample tiles and follows the Java engine's advertised concurrency, with at most six visible tiles in flight. The engine reserves two logical processors when possible, uses fewer workers on smaller machines, and cancels obsolete work between samples. Surface mode uses exact base heights wherever biome selection depends on Y. In a proven constant ocean area, with relief disabled, the engine can select the exact biome without calculating a height. All four possible X/Z corners of Minecraft's biome boundary refinement must agree. Shores, standard-climate ocean variations and other uncertain cases retain the height calculation.
 
@@ -61,7 +61,7 @@ For a reproducible whole-view worker/API measurement, run `node tools/benchmark_
 Node.js 20+:
 
 ```powershell
-node --test tests/mask.test.cjs
+node --test tests/*.test.cjs
 node tests/benchmark.cjs
 ```
 
