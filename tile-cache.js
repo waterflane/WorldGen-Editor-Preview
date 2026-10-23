@@ -5,10 +5,11 @@
     return {
       clear(){tiles.clear();},
       size(){return tiles.size;},
-      remember(batch){
+      remember(batch,replace=false){
         for(const tile of batch||[]){
           const key=`${tile.step}:${tile.x}:${tile.z}`;
-          if(tiles.has(key))continue;
+          if(tiles.has(key)&&!replace)continue;
+          tiles.delete(key);
           const {x,z,step,size}=tile;
           tiles.set(key,{x,z,step,size,image:makeImage(tile)});
           while(tiles.size>limit)tiles.delete(tiles.keys().next().value);

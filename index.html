@@ -17,6 +17,29 @@
         <span id="stateBadge" class="badge">ready</span>
       </header>
 
+      <nav class="toolbar" aria-label="Map workspace">
+        <button id="previewTab" type="button" aria-pressed="true">Превью</button>
+        <button id="editorTab" type="button" aria-pressed="false">Редактор карты</button>
+      </nav>
+
+      <div id="editorControls" class="control-group" hidden>
+        <h2>Своя карта · суша и океан</h2>
+        <div class="toolbar"><button id="newMapButton" type="button">Новый океан</button><button id="importPreviewButton" type="button">Из пресета превью</button></div>
+        <div class="toolbar"><label for="projectInput" class="file-button">Открыть проект / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Восстановить черновик</button></div>
+        <label>Сид мира<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
+        <div class="toolbar" role="group" aria-label="Кисти"><button id="landBrush" type="button" aria-pressed="true">Суша</button><button id="oceanBrush" type="button" aria-pressed="false">Океан</button></div>
+        <label><span>Радиус кисти: <output id="brushRadiusValue">128</output> блоков</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
+        <label><span>Неровность берега: <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>
+        <div class="toolbar"><button id="undoBrush" type="button" disabled>Отменить</button><button id="redoBrush" type="button" disabled>Повторить</button></div>
+        <button id="applyEditorButton" type="button">Применить к точному превью</button>
+        <div class="toolbar"><button id="saveProjectButton" type="button">Сохранить проект</button><button id="exportPresetButton" type="button">Экспорт пресета</button></div>
+        <p id="editorStatus" role="status">Откройте редактор, чтобы начать.</p>
+        <p class="editor-help">Левая кнопка — рисовать. Средняя кнопка или Space + перетаскивание — двигать карту. Колесо — масштаб. Ctrl+Z / Ctrl+Shift+Z — отмена / повтор.</p>
+        <p class="editor-help">Здесь показана быстрая маска. Точные биомы и базовый рельеф обновляются только после применения. Профиль точности: Minecraft + WGE.</p>
+      </div>
+
+      <div id="previewControls" class="control-group">
+
       <section class="control-group">
         <div class="row">
           <label for="fileInput" class="file-button">Open JSON</label>
@@ -77,13 +100,17 @@
         <h2>Islands</h2>
         <div id="islandList" class="island-list"></div>
       </section>
+      </div>
     </aside>
 
     <section class="stage">
       <canvas id="previewCanvas"></canvas>
-      <div class="hud">
+      <canvas id="editorCanvas" hidden aria-label="Карта для рисования островов"></canvas>
+      <div id="brushCursor" hidden></div>
+      <div id="editorHud" class="hud" hidden></div>
+      <div id="previewHud" class="hud">
         <span id="coords">x 0, z 0</span>
-        <span id="zoomLabel">1 px = 8 blocks</span>
+        <span id="zoomLabel">1 px = 8 blocks</span><span>Minecraft + WGE</span>
         <span id="statsLabel">0 islands</span>
       </div>
       <div id="biomeTooltip" class="biome-tooltip" role="tooltip" hidden></div>
@@ -96,5 +123,6 @@
   <script src="render-core.js"></script>
   <script src="tile-cache.js"></script>
   <script src="app.js"></script>
+  <script src="editor.js"></script>
 </body>
 </html>

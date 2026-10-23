@@ -118,6 +118,7 @@ let renderStartedAt = 0;
 let firstFrameElapsedMs = null;
 let lastRenderedView = null;
 let isInteracting = false;
+let previewPaused=false;
 let idleRenderTimer = 0;
 
 if (typeof Worker !== "undefined") {
@@ -264,10 +265,12 @@ function endInteractionSoon(delay=120) {
 }
 
 function requestRender() {
+  if(previewPaused)return;
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(() => {
     renderQueued = false;
+    if(previewPaused)return;
     if(isInteracting){drawDragPreview();setState("cached map",false);}
     else render();
   });
@@ -619,6 +622,13 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+window.WgePreview={
+  snapshot(){return {document:JSON.parse(appliedConfigText),seed:appliedSeedText,view:{...view}};},
+  pause(){previewPaused=true;latestRenderSequence=++renderSequence;if(renderWorker)renderWorker.postMessage({id:latestRenderSequence,cancelOnly:true});else fallbackRenderer.cancel(latestRenderSequence);},
+  resume(nextView){previewPaused=false;if(nextView)view={...nextView};requestRender();},
+  applyPainted(text,seed,nextView){jsonInput.value=text;seedInput.value=seed;if(nextView)view={...nextView};applyConfig();},
+};
 
 
 
