@@ -104,8 +104,8 @@ function updateModeControls(){
 updateModeControls();
 for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener("change",()=>{updateModeControls();requestRender();});
 if (location.protocol !== "file:") fetch("/api/info").then(r=>r.json()).then(info=>{
-  backendAvailable=info.protocol===1&&info.minecraft==="1.21.1";
-  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 1 / Minecraft 1.21.1";
+  backendAvailable=info.protocol===2&&info.minecraft==="1.21.1";
+  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2 / Minecraft 1.21.1; prepare the updated runtime";
   if(backendAvailable){mapSource.value="biomes";updateModeControls();requestRender();}
 }).catch(()=>{});
 let renderWorker = null;

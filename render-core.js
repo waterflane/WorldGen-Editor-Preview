@@ -77,7 +77,7 @@
           }
         }
       }
-      const inactive=config.enabled===false||config.entries.length===0;
+      const inactive=config.enabled===false||(config.entries.length===0&&!config.painted_map);
       const local=new Map();
       const finerLevels=[...levels].filter(level=>level<step).sort((a,b)=>a-b);
       function fromFinerCache(x,z){

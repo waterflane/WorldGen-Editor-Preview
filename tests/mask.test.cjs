@@ -50,7 +50,7 @@ test('world snapshots retain legacy versions and per-world enable flag',()=>{
  const document=core.readDocument({generation_version:1,enabled:false,config:raw});
  assert.equal(document.generationVersion,1);assert.equal(document.config.enabled,false);assert.equal(raw.enabled,true);
  assert.equal(core.readDocument({config:raw}).generationVersion,1);
- assert.throws(()=>core.readDocument({generation_version:3,config:raw}));
+ assert.throws(()=>core.readDocument({generation_version:4,config:raw}));
 });
 
 test('HTTP work can be aborted while the Java tile is still computing',async()=>{
@@ -208,3 +208,4 @@ test('enabling relief requests exact heights instead of reusing biome-only ocean
   assert.equal(requests,beforeReturn,'the biome-only cache must survive the relief toggle');
  }finally{global.fetch=original;}
 });
+

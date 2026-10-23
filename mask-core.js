@@ -1,6 +1,7 @@
 /* Shared deterministic mask implementation, used in workers, fallback rendering and tests. */
 (function(root) {
 "use strict";
+const {Grid:PaintedGrid}=root.WgePaintedMap||(typeof require==='function'?require('./painted-map.js'):{});
 const DEFAULT_AMPLITUDES = [1.0, 0.78, 0.55, 0.34];
 const DEFAULT_NOISE_SCALE = 3.2;
 const DEFAULT_FIRST_OCTAVE = -1;
@@ -27,11 +28,15 @@ const SPATIAL_CELL_SIZE = 512;
 function readDocument(input) {
   if(input?.config){
     const version=input.generation_version===undefined?1:input.generation_version;
-    if(!Number.isInteger(version)||version<1||version>2)throw new Error("Unsupported generation_version");
+    if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
+    if(input.config.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
     if(input.enabled!=null&&typeof input.enabled!=="boolean")throw new Error("World enabled must be boolean");
     return {config:{...input.config,enabled:(input.config.enabled??true)&&input.enabled!==false},generationVersion:version};
   }
-  return {config:input,generationVersion:2};
+  const version=input?.generation_version??(input?.painted_map?3:2);
+  if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
+  if(input?.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
+  return {config:input,generationVersion:version};
 }
 
 function parseConfig(input, seed) {
@@ -69,6 +74,7 @@ function parseConfig(input, seed) {
   compiledEntries.landGrid = buildSpatialGrid(landShapes);
   compiledEntries.oceanGrid = buildSpatialGrid(oceanShapes);
   compiledEntries.sourceSummaries = sourceSummaries;
+  compiledEntries.paintedMap=input.painted_map==null?null:new PaintedGrid(input.painted_map);
   return compiledEntries;
 }
 
@@ -179,14 +185,15 @@ function sampleMask(config, compiled, blockX, blockZ) {
   }
   const land = Math.max(union, additive);
   if (land <= 0) {
-    return 0;
+    return compiled.paintedMap?compiled.paintedMap.apply(0,blockX,blockZ):0;
   }
   let ocean = 0;
   for (const oceanShape of shapesNear(compiled, "ocean", blockX, blockZ)) {
     if (!containsPoint(oceanShape, blockX, blockZ)) continue;
     ocean = Math.max(ocean, sampleIsland(oceanShape, blockX, blockZ));
   }
-  return clamp(Math.min(land, 1 - ocean), 0, 1);
+  const base=clamp(Math.min(land, 1 - ocean), 0, 1);
+  return compiled.paintedMap?compiled.paintedMap.apply(base,blockX,blockZ):base;
 }
 
 function sampleIsland(island, blockX, blockZ) {
