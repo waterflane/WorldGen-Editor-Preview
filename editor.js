@@ -134,7 +134,12 @@
     baseWorker?.postMessage({id:++baseId,cancelOnly:true});draw();showCursor(event);clearTimeout(viewTimer);viewTimer=setTimeout(renderBase,120);
   },{passive:false});
   function updateBrushLabels(){$('brushRadiusValue').textContent=$('brushRadius').value;$('brushRoughnessValue').textContent=$('brushRoughness').value+'%';}
-  $('brushRadius').addEventListener('input',updateBrushLabels);$('brushRoughness').addEventListener('input',updateBrushLabels);
+  function saveBrushSettings(){
+    updateBrushLabels();if(!loaded||pendingLoad)return;
+    send('settings',{editor:{radius:Number($('brushRadius').value),roughness:Number($('brushRoughness').value)/100}});
+    dirty=true;updateStatus();scheduleSave();
+  }
+  $('brushRadius').addEventListener('input',saveBrushSettings);$('brushRoughness').addEventListener('input',saveBrushSettings);
   function chooseTool(value){tool=value;$('landBrush').setAttribute('aria-pressed',String(tool==='land'));$('oceanBrush').setAttribute('aria-pressed',String(tool==='ocean'));}
   $('landBrush').addEventListener('click',()=>chooseTool('land'));$('oceanBrush').addEventListener('click',()=>chooseTool('ocean'));
   $('undoBrush').addEventListener('click',()=>{if(!gesture)send('undo');});$('redoBrush').addEventListener('click',()=>{if(!gesture)send('redo');});

@@ -30,10 +30,14 @@
       const parsed=validate(input,seed);Object.assign(this,parsed);
       this.grid=new Grid(this.config.painted_map);this.undoStack=[];this.redoStack=[];this.historyBytes=0;this.stroke=null;this.revision=0;
     }
+    settings({radius,roughness}){
+      if(!Number.isFinite(radius)||radius<8||radius>2048||!Number.isFinite(roughness)||roughness<0||roughness>1)throw new Error('Invalid brush settings');
+      this.editor={...this.editor,radius,roughness};
+    }
     begin({radius=128,roughness=.25,tool='land'}){
       if(this.stroke)throw new Error('Finish the current stroke first');
-      if(!Number.isFinite(radius)||radius<8||radius>2048||!Number.isFinite(roughness)||roughness<0||roughness>1||!['land','ocean'].includes(tool))throw new Error('Invalid brush');
-      this.editor={...this.editor,radius,roughness};this.stroke={radius,roughness,target:tool==='land'?1:0,before:new Map(),coverage:new Map(),last:null};
+      if(!['land','ocean'].includes(tool))throw new Error('Invalid brush');
+      this.settings({radius,roughness});this.stroke={radius,roughness,target:tool==='land'?1:0,before:new Map(),coverage:new Map(),last:null};
     }
     async point(x,z,onPatch=()=>{},active=()=>true){
       if(!this.stroke||!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>BOUND||Math.abs(z)>BOUND)throw new Error('Brush outside world bounds');

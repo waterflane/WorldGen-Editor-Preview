@@ -47,6 +47,7 @@ async function drain(){
         for(const key of model.grid.tiles.keys()){patch([key]);await new Promise(resolve=>setTimeout(resolve,0));if(message.epoch!==epoch)break;}state();
       }
       else if(message.type==='begin'){operation=message.operation||0;model.begin(message.brush);}
+      else if(message.type==='settings')model.settings(message.editor);
       else if(message.type==='points'){for(const point of message.points){if(message.epoch!==epoch)break;await model.point(point.x,point.z,patch,()=>message.epoch===epoch);}}
       else if(message.type==='end'){model.end();state();}
       else if(message.type==='cancel'){patch(model.cancel());state();}

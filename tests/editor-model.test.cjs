@@ -27,3 +27,12 @@ test('cancel rolls back pending stroke and project roundtrip retains seed, view 
  assert.deepEqual(copy.preset(),m.preset());assert.equal(copy.undoStack.length,0);
  assert.throws(()=>validate({...project,version:2}));assert.throws(()=>validate({...project,editor:{radius:Infinity}}));
 });
+
+test('brush settings persist without painting or creating an undo action',()=>{
+ const model=new Model(blank());model.settings({radius:384,roughness:.8});
+ const copy=new Model(model.project({x:0,z:0,blocksPerPixel:4}));
+ assert.equal(copy.editor.radius,384);assert.equal(copy.editor.roughness,.8);
+ assert.equal(model.revision,0);assert.equal(model.undoStack.length,0);
+ assert.throws(()=>model.settings({radius:Infinity,roughness:.2}));
+ assert.equal(model.editor.radius,384);
+});
