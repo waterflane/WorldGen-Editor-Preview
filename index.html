@@ -60,6 +60,8 @@
           <button id="resetButton" type="button">Reset View</button>
         </div>
         <textarea id="jsonInput" spellcheck="false"></textarea>
+        <p id="paintedLayerNotice" class="editor-help" hidden>Нарисованная карта подключена. Здесь редактируются параметры; Download сохраняет полный применённый пресет.</p>
+        <button id="clearPaintButton" type="button" hidden>Убрать нарисованный слой из превью</button>
       </section>
 
       <section class="control-group compact">
@@ -122,6 +124,7 @@
   <script src="biome-colors.js"></script>
   <script src="render-core.js"></script>
   <script src="tile-cache.js"></script>
+  <script src="document-format.js"></script>
   <script src="app.js"></script>
   <script src="editor.js"></script>
 </body>

@@ -50,6 +50,7 @@
             let cover=Math.max(0,Math.min(1,(r-d)/Math.max(4,r*.25)));cover=cover*cover*(3-2*cover);if(!cover)continue;
             const tx=Math.floor(gx/SIZE),tz=Math.floor(gz/SIZE),key=`${tx}:${tz}`,i=(gz-tz*SIZE)*SIZE+gx-tx*SIZE;
             if(!s.before.has(key)){
+              if((s.before.size+1)*SIZE*SIZE*8>MAX_BYTES)throw new Error('Stroke too large to undo; use shorter strokes');
               if(!this.grid.tiles.has(key)&&this.grid.tiles.size>=MAX_TILES)throw new Error('Painted map tile limit reached');
               s.before.set(key,this.grid.tiles.get(key)?.slice()??null);s.coverage.set(key,new Float64Array(SIZE*SIZE));
               if(!this.grid.tiles.has(key))this.grid.tiles.set(key,new Uint32Array(SIZE*SIZE));

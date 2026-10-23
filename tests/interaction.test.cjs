@@ -19,20 +19,20 @@ test('world image cache restores distant areas, draws fine detail last and bound
 });
 
 function app(){
- const elements=new Map(),frames=[],timers=new Map(),messages=[];let timerId=0;
+ const elements=new Map(),frames=[],timers=new Map(),messages=[],workers=[];let timerId=0;
  const context=new Proxy({},{get:(o,k)=>o[k]||(()=>{})});
  function element(){return {value:'',checked:false,dataset:{},style:{},classList:{add(){},remove(){},toggle(){}},listeners:{},
   addEventListener(name,fn){this.listeners[name]=fn},appendChild(){},setPointerCapture(){},releasePointerCapture(){},
   getBoundingClientRect:()=>({left:0,top:0,width:800,height:600}),getContext:()=>context};}
  const document={querySelector(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},createElement:element};
- const sandbox={document,WgeMask:require('../mask-core.js'),WgeTileCache:require('../tile-cache.js'),
-  WgeRenderer:require('../render-core.js'),Worker:class{addEventListener(){}postMessage(m){messages.push(m)}},
+ const sandbox={document,WgeMask:require('../mask-core.js'),WgeTileCache:require('../tile-cache.js'),WgeDocument:require('../document-format.js'),
+  WgeRenderer:require('../render-core.js'),Worker:class{constructor(url){this.url=url;this.handlers={};workers.push(this)}addEventListener(type,fn){this.handlers[type]=fn}postMessage(m){messages.push(m)}},
   window:{addEventListener(){}},location:{protocol:'file:',search:''},performance,URLSearchParams,
   crypto:{getRandomValues:bytes=>bytes},requestAnimationFrame:fn=>frames.push(fn),
   setTimeout(fn){timers.set(++timerId,fn);return timerId},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(fs.readFileSync(require.resolve('../app.js'),'utf8'),sandbox);
  const flush=()=>{while(frames.length)frames.shift()()};flush();
- return {elements,messages,flush,tick(){const current=[...timers.values()];timers.clear();current.forEach(fn=>fn())}};
+ return {elements,messages,workers,preview:sandbox.window.WgePreview,flush,tick(){const current=[...timers.values()];timers.clear();current.forEach(fn=>fn())}};
 }
 
 test('dragging cancels generation, uses only the visual cache, and resumes on release',()=>{
@@ -58,4 +58,28 @@ test('wheel bursts draw cached tiles immediately and start only one generation a
  }
  assert.equal(ui.messages.filter(m=>!m.cancelOnly).length,0);
  ui.tick();ui.flush();assert.equal(ui.messages.filter(m=>!m.cancelOnly).length,1);
+});
+
+test('metadata editing and failed JSON preserve the linked painted layer; explicit clear removes it',()=>{
+ const ui=app(),format=require('../document-format.js');
+ const config={generation_version:3,entries:[],painted_map:{version:1,step:4,size:64,tiles:[{x:0,z:0,runs:[4096,65535,65535]}]}};
+ const ready=format.prepare(JSON.stringify(config),'0');ui.preview.applyPainted({...ready,seed:'0'});ui.flush();
+ assert.equal(JSON.parse(ui.preview.snapshot().document).painted_map.tiles.length,1);
+ assert.equal(JSON.parse(ui.elements.get('#jsonInput').value).painted_map,undefined);
+ const small=JSON.parse(ui.elements.get('#jsonInput').value);small.outer_ocean='minecraft:cold_ocean';
+ ui.elements.get('#jsonInput').value=JSON.stringify(small);ui.elements.get('#applyButton').listeners.click({});ui.flush();
+ const applied=ui.preview.snapshot().document;assert.equal(JSON.parse(applied).painted_map.tiles.length,1);
+ ui.elements.get('#jsonInput').value='{bad';ui.elements.get('#applyButton').listeners.click({});assert.equal(ui.preview.snapshot().document,applied);
+ ui.elements.get('#jsonInput').value=JSON.stringify(small);ui.elements.get('#clearPaintButton').listeners.click();ui.flush();
+ assert.equal(JSON.parse(ui.preview.snapshot().document).painted_map,undefined);
+});
+
+test('late document validation cannot replace a newer attempted configuration',()=>{
+ const ui=app(),format=require('../document-format.js'),before=ui.preview.snapshot().document;
+ const config={generation_version:3,entries:[],painted_map:{version:1,step:4,size:64,tiles:[]}};
+ ui.elements.get('#jsonInput').value=JSON.stringify(config);ui.elements.get('#applyButton').listeners.click({});
+ const request=ui.messages.at(-1),validator=ui.workers.find(w=>w.url==='document.worker.js');assert.ok(validator);
+ ui.elements.get('#jsonInput').value='{bad';ui.elements.get('#applyButton').listeners.click({});
+ validator.handlers.message({data:{id:request.id,...format.prepare(request.text,'0')}});
+ assert.equal(ui.preview.snapshot().document,before);
 });

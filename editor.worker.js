@@ -1,5 +1,5 @@
-importScripts('painted-map.js','mask-core.js','editor-model.js');
-let model=null,compiled=null,epoch=0,queue=[],running=false;
+importScripts('painted-map.js','mask-core.js','editor-model.js','document-format.js');
+let model=null,compiled=null,epoch=0,queue=[],running=false,operation=0;
 self.onmessage=event=>{
   const message=event.data;
   if(message.type==='load'||message.type==='cancel')epoch++;
@@ -19,9 +19,9 @@ function patch(keys){
     }
     tiles.push({x:tx*256,z:tz*256,step:4,size:64,buffer:buffer.buffer});
   }
-  if(tiles.length)self.postMessage({type:'patch',epoch,tiles},tiles.map(t=>t.buffer));
+  if(tiles.length)self.postMessage({type:'patch',epoch,operation,tiles},tiles.map(t=>t.buffer));
 }
-function state(){self.postMessage({type:'state',epoch,revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
+function state(){self.postMessage({type:'state',epoch,operation,revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
 async function drain(){
   running=true;
   while(queue.length){const message=queue.shift();
@@ -32,7 +32,7 @@ async function drain(){
         const next=new WgeEditorModel.Model(typeof message.input==='string'?JSON.parse(message.input):message.input,message.seed);
         const base={...next.config,painted_map:{version:1,step:4,size:64,tiles:[]}};
         const prepared=WgeMask.parseConfig(base,BigInt(next.seed));
-        model=next;compiled=prepared;
+        model=next;compiled=prepared;operation=0;
         self.postMessage({type:'loaded',epoch,seed:model.seed,editor:model.editor,base});
         const keys=[...model.grid.tiles.keys()];
         for(let i=0;i<keys.length;i+=4){patch(keys.slice(i,i+4));await new Promise(resolve=>setTimeout(resolve,0));if(message.epoch!==epoch)break;}
@@ -46,13 +46,16 @@ async function drain(){
         self.postMessage({type:'loaded',epoch,seed:model.seed,editor:model.editor,base,preserveHistory:true});
         for(const key of model.grid.tiles.keys()){patch([key]);await new Promise(resolve=>setTimeout(resolve,0));if(message.epoch!==epoch)break;}state();
       }
-      else if(message.type==='begin')model.begin(message.brush);
+      else if(message.type==='begin'){operation=message.operation||0;model.begin(message.brush);}
       else if(message.type==='points'){for(const point of message.points){if(message.epoch!==epoch)break;await model.point(point.x,point.z,patch,()=>message.epoch===epoch);}}
       else if(message.type==='end'){model.end();state();}
       else if(message.type==='cancel'){patch(model.cancel());state();}
       else if(message.type==='undo'||message.type==='redo'){patch(model.history(message.type==='redo'));state();}
       else if(message.type==='export'){
         if(model.stroke)throw new Error('Finish the stroke before exporting');
+        if(message.kind==='apply'){
+          self.postMessage({type:'export',id:message.id,epoch,kind:'apply',...WgeDocument.split(model.preset()),seed:model.seed,revision:model.revision});continue;
+        }
         const value=message.kind==='project'?model.project(message.view):model.preset(),text=JSON.stringify(value);
         if(new TextEncoder().encode(text).length>WgeEditorModel.MAX_BYTES)throw new Error('Export exceeds the 32 MiB limit');
         self.postMessage({type:'export',id:message.id,epoch,kind:message.kind,text,seed:model.seed,revision:model.revision});

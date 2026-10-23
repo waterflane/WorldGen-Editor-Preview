@@ -91,6 +91,7 @@ let pointer = { down: false, x: 0, y: 0, startX: 0, startZ: 0 };
 let renderQueued = false;
 let renderExactNoise = true;
 let appliedConfigText = "", appliedSeedText = "";
+let appliedPaintText=null,appliedPaintBounds=null,documentWorker=null,documentSequence=0;
 const mapSource = document.querySelector("#mapSource");
 const heightMode = document.querySelector("#heightMode");
 const reliefToggle = document.querySelector("#reliefToggle");
@@ -119,6 +120,7 @@ let firstFrameElapsedMs = null;
 let lastRenderedView = null;
 let isInteracting = false;
 let previewPaused=false;
+let applyingEditor=false;
 let idleRenderTimer = 0;
 
 if (typeof Worker !== "undefined") {
@@ -142,7 +144,7 @@ fitToIslands();
 document.querySelector("#applyButton").addEventListener("click", applyConfig);
 document.querySelector("#loadDefaultButton").addEventListener("click", () => {
   jsonInput.value = JSON.stringify(DEFAULT_CONFIG, null, 2);
-  applyConfig();
+  applyConfig(true);
   fitToIslands();
 });
 document.querySelector("#fitButton").addEventListener("click", fitToIslands);
@@ -158,14 +160,12 @@ thresholdToggle.addEventListener("change", requestRender);
 childLabelsToggle.addEventListener("change", requestRender);
 qualitySelect.addEventListener("change", () => requestRender("final"));
 
-fileInput.addEventListener("change", async () => {
-  const file = fileInput.files[0];
-  if (!file) return;
-  jsonInput.value = await file.text();
-  applyConfig();
-  fitToIslands();
-  fileInput.value = "";
+fileInput.addEventListener("change",async()=>{
+  const file=fileInput.files[0];fileInput.value="";if(!file)return;
+  try{if(file.size>32*1024*1024)throw new Error('File exceeds 32 MiB');applyConfig(true,await file.text());}
+  catch(error){setState(error.message,true);}
 });
+document.querySelector('#clearPaintButton').addEventListener('click',()=>applyConfig(true));
 
 canvas.addEventListener("pointerdown", (event) => {
   beginInteraction();
@@ -224,21 +224,38 @@ canvas.addEventListener("wheel", (event) => {
 
 window.addEventListener("resize", requestRender);
 
-function applyConfig() {
+function applyConfig(replacePaint=false,text=jsonInput.value) {
+  const sequence=++documentSequence;
   try {
-    const nextDocument=JSON.parse(jsonInput.value);
-    const nextConfig = WgeMask.readDocument(nextDocument).config;
-    let seed = parseSeed(seedInput.value);
-    if(seed===null){const bytes=crypto.getRandomValues(new Uint32Array(2));seed=BigInt.asIntN(64,(BigInt(bytes[0])<<32n)|BigInt(bytes[1]));seedInput.value=seed.toString();}
-    const nextCompiled = parseConfig(nextConfig, seed);
-    config=nextConfig;worldSeed=seed;compiled=nextCompiled;
-    appliedConfigText=JSON.stringify(nextDocument);appliedSeedText=seed.toString();
-    renderIslandList();
-    setState(config.enabled === false ? "disabled" : "ready", false);
-    requestRender();
-  } catch (error) {
-    setState(error.message, true);
-  }
+    let seed=parseSeed(seedInput.value);
+    if(seed===null){const bytes=crypto.getRandomValues(new Uint32Array(2));seed=BigInt.asIntN(64,(BigInt(bytes[0])<<32n)|BigInt(bytes[1]));}
+    if(text.length>1048576 || text.includes('"painted_map"')){
+      if(!documentWorker){
+        documentWorker=new Worker('document.worker.js');
+        documentWorker.addEventListener('message',({data})=>{
+          if(data.id!==documentSequence)return;
+          if(data.error){setState(data.error,true);return;}
+          try{commitDocument(data.metadataText,data.seedText,data.paintText,data.bounds);}catch(error){setState(error.message,true);}
+        });
+        documentWorker.addEventListener('error',event=>setState(`document worker error: ${event.message}`,true));
+      }
+      setState('validating map',false);documentWorker.postMessage({id:sequence,text,seed:seed.toString()});return;
+    }
+    commitDocument(text,seed.toString(),replacePaint===true?null:appliedPaintText,replacePaint===true?null:appliedPaintBounds);
+  } catch(error){setState(error.message,true);}
+}
+
+function commitDocument(metadataText,seedText,paintText=null,bounds=null) {
+  const nextDocument=JSON.parse(metadataText),parsed=WgeMask.readDocument(nextDocument),seed=parseSeed(seedText);
+  if(paintText&&parsed.generationVersion<3)throw new Error('Painted maps require generation_version 3');
+  const nextCompiled=parseConfig(parsed.config,seed);
+  const complete=paintText?WgeDocument.attach(nextDocument,paintText):JSON.stringify(nextDocument);
+  config=parsed.config;worldSeed=seed;compiled=nextCompiled;
+  appliedPaintText=paintText;appliedPaintBounds=bounds;appliedConfigText=complete;appliedSeedText=seed.toString();
+  jsonInput.value=metadataText;seedInput.value=appliedSeedText;
+  document.querySelector('#paintedLayerNotice').hidden=!paintText;document.querySelector('#clearPaintButton').hidden=!paintText;
+  if(typeof window.dispatchEvent==='function')window.dispatchEvent(new CustomEvent('wge-preview-applied',{detail:{document:complete,seed:appliedSeedText,view:{...view},fromEditor:applyingEditor}}));
+  renderIslandList();setState(config.enabled===false?'disabled':'ready',false);requestRender();
 }
 
 function beginInteraction() {
@@ -519,7 +536,7 @@ function renderIslandList() {
   islandList.innerHTML = "";
   const items = compiled.sourceSummaries || compiled;
   if (!items.length) {
-    islandList.textContent = "No islands";
+    islandList.textContent = appliedPaintText ? "Нарисованная карта" : "No islands";
     return;
   }
   for (const island of items) {
@@ -540,7 +557,7 @@ function renderIslandList() {
 
 function fitToIslands() {
   const items = compiled.sourceSummaries || compiled;
-  if (!items.length) {
+  if (!items.length && !appliedPaintBounds) {
     view = { x: 0, z: 0, blocksPerPixel: 8 };
     requestRender();
     return;
@@ -556,6 +573,7 @@ function fitToIslands() {
     maxX = Math.max(maxX, island.centerX + radius);
     maxZ = Math.max(maxZ, island.centerZ + radius);
   }
+  if(appliedPaintBounds){minX=Math.min(minX,appliedPaintBounds.minX);minZ=Math.min(minZ,appliedPaintBounds.minZ);maxX=Math.max(maxX,appliedPaintBounds.maxX);maxZ=Math.max(maxZ,appliedPaintBounds.maxZ);}
   const rect = canvas.getBoundingClientRect();
   view.x = (minX + maxX) / 2;
   view.z = (minZ + maxZ) / 2;
@@ -564,7 +582,7 @@ function fitToIslands() {
 }
 
 function downloadConfig() {
-  const blob = new Blob([jsonInput.value], { type: "application/json" });
+  const blob = new Blob([appliedConfigText], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -624,10 +642,10 @@ function escapeHtml(value) {
 }
 
 window.WgePreview={
-  snapshot(){return {document:JSON.parse(appliedConfigText),seed:appliedSeedText,view:{...view}};},
-  pause(){previewPaused=true;latestRenderSequence=++renderSequence;if(renderWorker)renderWorker.postMessage({id:latestRenderSequence,cancelOnly:true});else fallbackRenderer.cancel(latestRenderSequence);},
+  snapshot(){return {document:appliedConfigText,seed:appliedSeedText,view:{...view}};},
+  pause(){previewPaused=true;setState('editor',false);latestRenderSequence=++renderSequence;if(renderWorker)renderWorker.postMessage({id:latestRenderSequence,cancelOnly:true});else fallbackRenderer.cancel(latestRenderSequence);},
   resume(nextView){previewPaused=false;if(nextView)view={...nextView};requestRender();},
-  applyPainted(text,seed,nextView){jsonInput.value=text;seedInput.value=seed;if(nextView)view={...nextView};applyConfig();},
+  applyPainted(result,nextView){documentSequence++;if(nextView)view={...nextView};applyingEditor=true;try{commitDocument(result.metadataText,result.seed,result.paintText,result.bounds);}finally{applyingEditor=false;}},
 };
 
 
