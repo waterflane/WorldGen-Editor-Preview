@@ -26,6 +26,7 @@ const DEEP_OCEAN_MASK = 0.08;
 const SPATIAL_CELL_SIZE = 512;
 
 function readDocument(input) {
+  if(input?.format!==undefined)throw new Error('Unsupported preview document format; open map projects in the map editor');
   if(input?.config){
     const version=input.generation_version===undefined?1:input.generation_version;
     if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");

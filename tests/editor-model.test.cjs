@@ -26,6 +26,7 @@ test('cancel rolls back pending stroke and project roundtrip retains seed, view 
  assert.equal(copy.seed,'123');assert.deepEqual(copy.editor.view,view);
  assert.deepEqual(copy.preset(),m.preset());assert.equal(copy.undoStack.length,0);
  assert.throws(()=>validate({...project,version:2}));assert.throws(()=>validate({...project,editor:{radius:Infinity}}));
+ assert.throws(()=>validate({format:'future-map-project',version:1,config:{entries:[]}}));
 });
 
 test('brush settings persist without painting or creating an undo action',()=>{

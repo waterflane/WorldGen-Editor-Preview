@@ -14,5 +14,6 @@ test('painted preset payload survives metadata editing without main-thread mask 
 });
 test('document preparation rejects malformed and editor-only files before replacing a working map',()=>{
  assert.throws(()=>prepare('{','0'));assert.throws(()=>prepare(JSON.stringify({format:'wge-map-project',version:1,config:{entries:[]}}),'0'));
+ assert.throws(()=>prepare(JSON.stringify({format:'future-map-project',version:1,config:{entries:[]}}),'0'));
  assert.throws(()=>prepare(JSON.stringify({entries:[],generation_version:2,painted_map:{version:1,step:4,size:64,tiles:[]}}),'0'));
 });
