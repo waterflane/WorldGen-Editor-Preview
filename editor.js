@@ -13,13 +13,13 @@
   const makeImage=tile=>{const c=document.createElement('canvas');c.width=tile.size;c.height=tile.size;c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(tile.buffer),tile.size,tile.size),0,0);return c;};
   const baseCache=WgeTileCache.create(makeImage),paintCache=WgeTileCache.create(makeImage,4096);
   function tell(text,error=false){status.textContent=text;status.classList.toggle('error',error);}
-  function updateStatus(){tell(`${revision===appliedRevision?'Применено':'Есть неприменённые изменения'} · ${dirty?'проект не сохранён':'нет несохранённых правок'} · сид ${$('editorSeed').value}${previewDiverged?' · в превью открыт другой пресет; черновик сохранён':''}${currentBase?.enabled===false?' · генерация отключена в JSON':''}`);}
+  function updateStatus(){tell(`${revision===appliedRevision?'Applied':'Unapplied changes'} · ${dirty?'unsaved project':'no unsaved changes'} · seed ${$('editorSeed').value}${previewDiverged?' · preview uses another preset; draft kept':''}${currentBase?.enabled===false?' · generation disabled in JSON':''}`);}
   function send(type,data={}){worker?.postMessage({type,...data});}
   function ensureWorkers(){
     if(worker)return;
-    if(typeof Worker==='undefined')throw new Error('Редактору требуется браузер с Web Workers');
+    if(typeof Worker==='undefined')throw new Error('The editor requires a browser with Web Workers');
     worker=new Worker('editor.worker.js');baseWorker=new Worker('renderer.worker.js');
-    worker.addEventListener('error',e=>tell(`Ошибка редактора: ${e.message}`,true));
+    worker.addEventListener('error',e=>tell(`Editor error: ${e.message}`,true));
     worker.addEventListener('message',({data:m})=>{
       if(m.type==='error'){
         if(m.seed!==undefined)$('editorSeed').value=m.seed;
@@ -55,13 +55,13 @@
       if(m.id!==baseId)return;if(m.error){tell(m.error,true);return;}
       baseCache.remember(m.visualTiles);draw();
     });
-    baseWorker.addEventListener('error',e=>tell(`Ошибка маски: ${e.message}`,true));
+    baseWorker.addEventListener('error',e=>tell(`Mask error: ${e.message}`,true));
   }
   function open(input,seed='0',nextView=view,unsaved=false){
     ensureWorkers();finishGesture(true);clearTimeout(saveTimer);pendingLoad=true;pendingView={...nextView};pendingDirty=unsaved;
-    baseWorker.postMessage({id:++baseId,cancelOnly:true});send('load',{input,seed});tell('Загрузка проекта…');
+    baseWorker.postMessage({id:++baseId,cancelOnly:true});send('load',{input,seed});tell('Loading project…');
   }
-  function okayToReplace(){return !dirty||confirm('Текущий проект не сохранён в файл. Заменить его?');}
+  function okayToReplace(){return !dirty||confirm('The current project has not been saved to a file. Replace it?');}
   function switchTab(editor){
     if(gesture)finishGesture(true);active=editor;
     controls.hidden=!editor;$('previewControls').hidden=editor;canvas.hidden=!editor;$('previewCanvas').hidden=editor;
@@ -84,7 +84,7 @@
       baseCache.draw(context,view,canvas.width,canvas.height);paintCache.draw(context,view,canvas.width,canvas.height);
       if(measurement&&firstPaintPending){measurement.first=performance.now()-measurement.start;canvas.dataset.firstBrushFrameMs=String(Math.round(measurement.first));firstPaintPending=false;}
       if(measurement&&completePaintPending){measurement.done=true;canvas.dataset.brushCompleteMs=String(Math.round(performance.now()-measurement.start));completePaintPending=false;}
-      hud.textContent=`Быстрая маска · x ${Math.round(view.x)}, z ${Math.round(view.z)} · 1 px = ${view.blocksPerPixel.toFixed(2)} блоков`;
+      hud.textContent=`Quick mask · x ${Math.round(view.x)}, z ${Math.round(view.z)} · 1 px = ${view.blocksPerPixel.toFixed(2)} blocks`;
     });
   }
   function renderBase(){
@@ -154,15 +154,15 @@
   $('importPreviewButton').addEventListener('click',()=>{if(okayToReplace()){const p=WgePreview.snapshot();open(p.document,p.seed,p.view);}});
   $('projectInput').addEventListener('change',async event=>{
     const file=event.target.files[0];event.target.value='';if(!file||!okayToReplace())return;
-    try{if(file.size>32*1024*1024)throw new Error('Файл больше 32 МиБ');open(await file.text(),$('editorSeed').value);}catch(error){tell(error.message,true);}
+    try{if(file.size>32*1024*1024)throw new Error('File exceeds 32 MiB');open(await file.text(),$('editorSeed').value);}catch(error){tell(error.message,true);}
   });
   function exportDocument(kind){
-    if(!loaded||pendingLoad||gesture)return Promise.reject(new Error('Завершите действие и дождитесь загрузки карты'));
+    if(!loaded||pendingLoad||gesture)return Promise.reject(new Error('Finish the current action and wait for the map to load'));
     return new Promise((resolve,reject)=>{const id=++exportId;exports.set(id,{resolve,reject});send('export',{id,kind,view:{...view}});});
   }
   function download(text,name){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,'island-map.wge.json');if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
-  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,'custom_map.json');tell(`Пресет экспортирован. Создайте новый мир WGE: Custom Map (v3), сид ${result.seed}.`);}catch(error){tell(error.message,true);}});
+  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,'custom_map.json');tell(`Preset exported. Create a new WGE: Custom Map (v3) world with seed ${result.seed}.`);}catch(error){tell(error.message,true);}});
   $('applyEditorButton').addEventListener('click',async()=>{
     try{const result=await exportDocument('apply');WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;updateStatus();switchTab(false);}catch(error){tell(error.message,true);}
   });
@@ -179,7 +179,7 @@
   function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
     if(!db||gesture||pendingLoad)return;
     try{const result=await exportDocument('project');const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(result.text,'current');
-      tx.oncomplete=()=>{draftText=result.text;$('restoreDraftButton').disabled=false;};tx.onerror=()=>tell('Не удалось сохранить локальный черновик',true);
+      tx.oncomplete=()=>{draftText=result.text;$('restoreDraftButton').disabled=false;};tx.onerror=()=>tell('Could not save the local draft',true);
     }catch(error){tell(error.message,true);}
   },600);}
   $('restoreDraftButton').addEventListener('click',()=>{if(draftText&&okayToReplace())open(draftText,'0',view,true);});
@@ -187,6 +187,6 @@
     const request=indexedDB.open('wge-map-editor',1);
     request.onupgradeneeded=()=>request.result.createObjectStore('drafts');
     request.onsuccess=()=>{db=request.result;const read=db.transaction('drafts').objectStore('drafts').get('current');read.onsuccess=()=>{if(typeof read.result==='string'){draftText=read.result;$('restoreDraftButton').disabled=false;}};};
-    request.onerror=()=>tell('Автосохранение недоступно; сохраняйте проект в файл',true);
-  }catch{tell('Автосохранение недоступно; сохраняйте проект в файл',true);}
+    request.onerror=()=>tell('Autosave is unavailable; save your project to a file',true);
+  }catch{tell('Autosave is unavailable; save your project to a file',true);}
 })();

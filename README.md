@@ -46,13 +46,13 @@ A disabled or legacy empty offline mask is displayed neutrally. An explicitly pa
 
 ## Island map editor
 
-The **Редактор карты** tab shares the preview's navigation and document. Start with **Новый океан**, use **Из пресета превью**, or open a project/preset. **Суша** and **Океан** replace each other; brush radius and shore roughness are adjustable. Roughness is baked into the mask, so changing the world seed does not move a painted coast.
+The **Map Editor** tab shares the preview's navigation and document. Start with **New Ocean**, use **Use Preview Preset**, or open a project/preset. **Land** and **Ocean** replace each other; brush radius and shore roughness are adjustable. Roughness is baked into the mask, so changing the world seed does not move a painted coast.
 
 - Left drag paints a continuous stroke. Middle drag or Space + drag pans; the wheel zooms.
 - Each stroke is one undo action. Use the buttons or Ctrl+Z / Ctrl+Shift+Z.
-- **Применить к точному превью** updates the exact Minecraft + WGE map. Drawing never starts Java generation. Unapplied changes are shown explicitly.
-- **Сохранить проект** downloads a versioned `.wge.json` with seed, procedural base, paint and editor settings. **Экспорт пресета** downloads a self-contained `custom_map.json`; use the displayed numeric seed when creating a new **WGE: Custom Map (v3)** world. Copy the preset into `config/worldgen_editor/presets/custom_map.json` first.
-- IndexedDB keeps a recoverable local draft after edits. Use **Восстановить черновик** after reopening. Opening a clean document does not overwrite the recovery draft. Unsaved work triggers a navigation warning.
+- **Apply to Exact Preview** updates the exact Minecraft + WGE map. Drawing never starts Java generation. Unapplied changes are shown explicitly.
+- **Save Project** downloads a versioned `.wge.json` with seed, procedural base, paint and editor settings. **Export Preset** downloads a self-contained `custom_map.json`; use the displayed numeric seed when creating a new **WGE: Custom Map (v3)** world. Copy the preset into `config/worldgen_editor/presets/custom_map.json` first.
+- IndexedDB keeps a recoverable local draft after edits. Use **Restore Draft** after reopening. Opening a clean document does not overwrite the recovery draft. Unsaved work triggers a navigation warning.
 
 Brush computation, validation and serialization run in workers. Only affected painted tiles are updated during a stroke; cached areas remain visible while panning/zooming. Large painted payloads stay separate from the main JSON text editor: it shows editable parameters, and **Download** includes the entire last applied preset. An explicit button removes the linked painted layer. Invalid imports leave the current document intact.
 

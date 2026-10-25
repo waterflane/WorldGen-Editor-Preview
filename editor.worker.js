@@ -40,7 +40,7 @@ async function drain(){
       }else if(!model)throw new Error('Open a map first');
       else if(message.type==='seed'){
         if(model.stroke)throw new Error('Finish the stroke before changing the seed');
-        const seed=WgeMask.parseSeed(message.seed);if(seed===null)throw new Error('Введите сид мира');
+        const seed=WgeMask.parseSeed(message.seed);if(seed===null)throw new Error('Enter a world seed');
         const base={...model.config,painted_map:{version:1,step:4,size:64,tiles:[]}};
         const next=WgeMask.parseConfig(base,seed);model.seed=seed.toString();compiled=next;model.revision++;
         self.postMessage({type:'loaded',epoch,seed:model.seed,editor:model.editor,base,preserveHistory:true});

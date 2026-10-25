@@ -18,24 +18,24 @@
       </header>
 
       <nav class="toolbar" aria-label="Map workspace">
-        <button id="previewTab" type="button" aria-pressed="true">Превью</button>
-        <button id="editorTab" type="button" aria-pressed="false">Редактор карты</button>
+        <button id="previewTab" type="button" aria-pressed="true">Preview</button>
+        <button id="editorTab" type="button" aria-pressed="false">Map Editor</button>
       </nav>
 
       <div id="editorControls" class="control-group" hidden>
-        <h2>Своя карта · суша и океан</h2>
-        <div class="toolbar"><button id="newMapButton" type="button">Новый океан</button><button id="importPreviewButton" type="button">Из пресета превью</button></div>
-        <div class="toolbar"><label for="projectInput" class="file-button">Открыть проект / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Восстановить черновик</button></div>
-        <label>Сид мира<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
-        <div class="toolbar" role="group" aria-label="Кисти"><button id="landBrush" type="button" aria-pressed="true">Суша</button><button id="oceanBrush" type="button" aria-pressed="false">Океан</button></div>
-        <label><span>Радиус кисти: <output id="brushRadiusValue">128</output> блоков</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
-        <label><span>Неровность берега: <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>
-        <div class="toolbar"><button id="undoBrush" type="button" disabled>Отменить</button><button id="redoBrush" type="button" disabled>Повторить</button></div>
-        <button id="applyEditorButton" type="button">Применить к точному превью</button>
-        <div class="toolbar"><button id="saveProjectButton" type="button">Сохранить проект</button><button id="exportPresetButton" type="button">Экспорт пресета</button></div>
-        <p id="editorStatus" role="status">Откройте редактор, чтобы начать.</p>
-        <p class="editor-help">Левая кнопка — рисовать. Средняя кнопка или Space + перетаскивание — двигать карту. Колесо — масштаб. Ctrl+Z / Ctrl+Shift+Z — отмена / повтор.</p>
-        <p class="editor-help">Здесь показана быстрая маска. Точные биомы и базовый рельеф обновляются только после применения. Профиль точности: Minecraft + WGE.</p>
+        <h2>Custom map · land and ocean</h2>
+        <div class="toolbar"><button id="newMapButton" type="button">New Ocean</button><button id="importPreviewButton" type="button">Use Preview Preset</button></div>
+        <div class="toolbar"><label for="projectInput" class="file-button">Open Project / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Restore Draft</button></div>
+        <label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
+        <div class="toolbar" role="group" aria-label="Brushes"><button id="landBrush" type="button" aria-pressed="true">Land</button><button id="oceanBrush" type="button" aria-pressed="false">Ocean</button></div>
+        <label><span>Brush radius: <output id="brushRadiusValue">128</output> blocks</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
+        <label><span>Shore roughness: <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>
+        <div class="toolbar"><button id="undoBrush" type="button" disabled>Undo</button><button id="redoBrush" type="button" disabled>Redo</button></div>
+        <button id="applyEditorButton" type="button">Apply to Exact Preview</button>
+        <div class="toolbar"><button id="saveProjectButton" type="button">Save Project</button><button id="exportPresetButton" type="button">Export Preset</button></div>
+        <p id="editorStatus" role="status">Open the editor to get started.</p>
+        <p class="editor-help">Left drag to paint. Middle drag or Space + drag to pan. Scroll to zoom. Ctrl+Z / Ctrl+Shift+Z to undo / redo.</p>
+        <p class="editor-help">This view shows the quick mask. Exact biomes and base terrain update only after applying. Accuracy profile: Minecraft + WGE.</p>
       </div>
 
       <div id="previewControls" class="control-group">
@@ -60,8 +60,8 @@
           <button id="resetButton" type="button">Reset View</button>
         </div>
         <textarea id="jsonInput" spellcheck="false"></textarea>
-        <p id="paintedLayerNotice" class="editor-help" hidden>Нарисованная карта подключена. Здесь редактируются параметры; Download сохраняет полный применённый пресет.</p>
-        <button id="clearPaintButton" type="button" hidden>Убрать нарисованный слой из превью</button>
+        <p id="paintedLayerNotice" class="editor-help" hidden>A painted map is attached. Edit its settings here; Download saves the full applied preset.</p>
+        <button id="clearPaintButton" type="button" hidden>Remove Painted Layer</button>
       </section>
 
       <section class="control-group compact">
@@ -107,7 +107,7 @@
 
     <section class="stage">
       <canvas id="previewCanvas"></canvas>
-      <canvas id="editorCanvas" hidden aria-label="Карта для рисования островов"></canvas>
+      <canvas id="editorCanvas" hidden aria-label="Island painting map"></canvas>
       <div id="brushCursor" hidden></div>
       <div id="editorHud" class="hud" hidden></div>
       <div id="previewHud" class="hud">

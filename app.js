@@ -538,7 +538,7 @@ function renderIslandList() {
   islandList.innerHTML = "";
   const items = compiled.sourceSummaries || compiled;
   if (!items.length) {
-    islandList.textContent = appliedPaintText ? "Нарисованная карта" : "No islands";
+    islandList.textContent = appliedPaintText ? "Painted map" : "No islands";
     return;
   }
   for (const island of items) {
