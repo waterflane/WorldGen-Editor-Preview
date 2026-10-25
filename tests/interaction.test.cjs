@@ -18,7 +18,7 @@ test('world image cache restores distant areas, draws fine detail last and bound
  assert.equal(cache.draw(context,{x:-8,z:8,blocksPerPixel:1},32,32),0);
 });
 
-function app(){
+function app(info){
  const elements=new Map(),frames=[],timers=new Map(),messages=[],workers=[];let timerId=0;
  const context=new Proxy({},{get:(o,k)=>o[k]||(()=>{})});
  function element(){return {value:'',checked:false,dataset:{},style:{},classList:{add(){},remove(){},toggle(){}},listeners:{},
@@ -27,7 +27,8 @@ function app(){
  const document={querySelector(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},createElement:element};
  const sandbox={document,WgeMask:require('../mask-core.js'),WgeTileCache:require('../tile-cache.js'),WgeDocument:require('../document-format.js'),
   WgeRenderer:require('../render-core.js'),Worker:class{constructor(url){this.url=url;this.handlers={};workers.push(this)}addEventListener(type,fn){this.handlers[type]=fn}postMessage(m){messages.push(m)}},
-  window:{addEventListener(){}},location:{protocol:'file:',search:''},performance,URLSearchParams,
+  window:{addEventListener(){}},location:{protocol:info?'http:':'file:',search:''},performance,URLSearchParams,
+  fetch:async()=>({json:async()=>info}),
   crypto:{getRandomValues:bytes=>bytes},requestAnimationFrame:fn=>frames.push(fn),
   setTimeout(fn){timers.set(++timerId,fn);return timerId},clearTimeout:id=>timers.delete(id)};
  vm.runInNewContext(fs.readFileSync(require.resolve('../app.js'),'utf8'),sandbox);
@@ -82,4 +83,28 @@ test('late document validation cannot replace a newer attempted configuration',(
  ui.elements.get('#jsonInput').value='{bad';ui.elements.get('#applyButton').listeners.click({});
  validator.handlers.message({data:{id:request.id,...format.prepare(request.text,'0')}});
  assert.equal(ui.preview.snapshot().document,before);
+});
+
+test('changing ocean policy ignores late worker responses and invalid settings preserve the applied map',()=>{
+ const ui=app(),input=ui.elements.get('#jsonInput'),renderer=ui.workers.find(w=>w.url==='renderer.worker.js');
+ const previous=ui.messages.at(-1),config=JSON.parse(input.value);config.ocean_temperature='warm';input.value=JSON.stringify(config);
+ ui.elements.get('#applyButton').listeners.click({});ui.flush();
+ assert.equal(JSON.parse(ui.preview.snapshot().document).ocean_temperature,'warm');
+ const before=ui.elements.get('#stateBadge').textContent;
+ renderer.handlers.message({data:{id:previous.id,error:'obsolete cold coastline'}});
+ assert.equal(ui.elements.get('#stateBadge').textContent,before);
+ input.value=JSON.stringify({...config,ocean_temperature:'standard'});ui.elements.get('#applyButton').listeners.click({});
+ assert.equal(JSON.parse(ui.preview.snapshot().document).ocean_temperature,'warm');
+});
+
+test('Java capability negotiation rejects the old ocean policy and accepts the updated runtime',async()=>{
+ const base={protocol:2,minecraft:'1.21.1',supported_generation_versions:[1,2,3],capabilities:['painted_map_v1','vanilla_wge_only']};
+ for(const enabled of [false,true]){
+  const ui=app({...base,capabilities:[...base.capabilities,...(enabled?['ocean_temperature_v1']:[])]});
+  await new Promise(resolve=>setImmediate(resolve));
+  const source=ui.elements.get('#mapSource');source.value='biomes';source.listeners.change();ui.flush();
+  const request=ui.messages.filter(m=>m.source==='biomes'&&!m.cancelOnly).at(-1);
+  assert.equal(request.backendAvailable,enabled);
+  if(!enabled)assert.match(request.backendError,/ocean temperature/);
+ }
 });
