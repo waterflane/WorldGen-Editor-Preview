@@ -21,7 +21,7 @@ function patch(keys){
   }
   if(tiles.length)self.postMessage({type:'patch',epoch,operation,tiles},tiles.map(t=>t.buffer));
 }
-function state(){self.postMessage({type:'state',epoch,operation,revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
+function state(){self.postMessage({type:'state',epoch,operation,name:model.config.name,revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
 async function drain(){
   running=true;
   while(queue.length){const message=queue.shift();
@@ -33,7 +33,7 @@ async function drain(){
         const base={...next.config,painted_map:{version:1,step:4,size:64,tiles:[]}};
         const prepared=WgeMask.parseConfig(base,BigInt(next.seed));
         model=next;compiled=prepared;operation=0;
-        self.postMessage({type:'loaded',epoch,seed:model.seed,editor:model.editor,base});
+        self.postMessage({type:'loaded',epoch,name:model.config.name,seed:model.seed,editor:model.editor,base});
         const keys=[...model.grid.tiles.keys()];
         for(let i=0;i<keys.length;i+=4){patch(keys.slice(i,i+4));await new Promise(resolve=>setTimeout(resolve,0));if(message.epoch!==epoch)break;}
         state();
@@ -48,6 +48,7 @@ async function drain(){
       }
       else if(message.type==='begin'){operation=message.operation||0;model.begin(message.brush);}
       else if(message.type==='settings')model.settings(message.editor);
+      else if(message.type==='name'){model.rename(message.name);state();}
       else if(message.type==='points'){for(const point of message.points){if(message.epoch!==epoch)break;await model.point(point.x,point.z,patch,()=>message.epoch===epoch);}}
       else if(message.type==='end'){model.end();state();}
       else if(message.type==='cancel'){patch(model.cancel());state();}
@@ -59,9 +60,9 @@ async function drain(){
         }
         const value=message.kind==='project'?model.project(message.view):model.preset(),text=JSON.stringify(value);
         if(new TextEncoder().encode(text).length>WgeEditorModel.MAX_BYTES)throw new Error('Export exceeds the 32 MiB limit');
-        self.postMessage({type:'export',id:message.id,epoch,kind:message.kind,text,seed:model.seed,revision:model.revision});
+        self.postMessage({type:'export',id:message.id,epoch,kind:message.kind,text,seed:model.seed,revision:model.revision,filename:WgeDocument.filename(model.config.name,message.kind==='project'),name:model.config.name});
       }
-    }catch(error){if(model?.stroke)patch(model.cancel());self.postMessage({type:'error',id:message.id,epoch,error:error.message,seed:model?.seed});}
+    }catch(error){if(model?.stroke)patch(model.cancel());self.postMessage({type:'error',id:message.id,epoch,error:error.message,seed:model?.seed,name:model?.config.name});}
   }
   running=false;
 }

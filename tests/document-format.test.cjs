@@ -1,5 +1,13 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
 const {prepare,attach}=require('../document-format.js');
+const {filename}=require('../document-format.js');
+
+test('download names are safe for the preset directory without a forced custom_map filename',()=>{
+ assert.equal(filename('Hidden Coast'),'Hidden-Coast.json');
+ assert.equal(filename('Hidden Coast',true),'Hidden-Coast.wge.json');
+ assert.equal(filename('../CON: bad/map'),'..-CON--bad-map.json');
+ assert.equal(filename('CON'),'Map-CON.json');assert.equal(filename('..'),'Island-Map.json');
+});
 test('painted preset payload survives metadata editing without main-thread mask decoding',()=>{
  const preset=JSON.parse(fs.readFileSync(path.resolve(__dirname,'../../WorldGen Editor/common/src/test/resources/painted-islands.json')));
  const ready=prepare(JSON.stringify(preset),'+123'),small=JSON.parse(ready.metadataText);

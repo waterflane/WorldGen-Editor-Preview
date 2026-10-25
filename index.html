@@ -26,6 +26,7 @@
         <h2>Custom map · land and ocean</h2>
         <div class="toolbar"><button id="newMapButton" type="button">New Ocean</button><button id="importPreviewButton" type="button">Use Preview Preset</button></div>
         <div class="toolbar"><label for="projectInput" class="file-button">Open Project / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Restore Draft</button></div>
+        <label>Map name<input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label>
         <label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
         <div class="toolbar" role="group" aria-label="Brushes"><button id="landBrush" type="button" aria-pressed="true">Land</button><button id="oceanBrush" type="button" aria-pressed="false">Ocean</button></div>
         <label><span>Brush radius: <output id="brushRadiusValue">128</output> blocks</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
@@ -36,6 +37,7 @@
         <p id="editorStatus" role="status">Open the editor to get started.</p>
         <p class="editor-help">Left drag to paint. Middle drag or Space + drag to pan. Scroll to zoom. Ctrl+Z / Ctrl+Shift+Z to undo / redo.</p>
         <p class="editor-help">This view shows the quick mask. Exact biomes and base terrain update only after applying. Accuracy profile: Minecraft + WGE.</p>
+        <p class="editor-help">Add an exported preset or editor project to Minecraft's config/worldgen_editor/presets folder. Select its map name in World Type; no file renaming is required.</p>
       </div>
 
       <div id="previewControls" class="control-group">

@@ -37,3 +37,12 @@ test('brush settings persist without painting or creating an undo action',()=>{
  assert.throws(()=>model.settings({radius:Infinity,roughness:.2}));
  assert.equal(model.editor.radius,384);
 });
+
+test('map name survives project and preset export independently of its filename',()=>{
+ const model=new Model(blank());model.rename('  Hidden Coast  ');
+ const project=model.project({x:0,z:0,blocksPerPixel:4}),copy=new Model(project);
+ assert.equal(project.name,'Hidden Coast');assert.equal(project.config.name,'Hidden Coast');
+ assert.equal(copy.preset().name,'Hidden Coast');assert.equal(model.revision,1);
+ assert.throws(()=>model.rename(''));assert.throws(()=>model.rename('bad\nname'));
+ assert.equal(model.config.name,'Hidden Coast');
+});

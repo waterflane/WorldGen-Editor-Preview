@@ -588,7 +588,7 @@ function downloadConfig() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = "continents.json";
+  link.download = WgeDocument.filename(config.name||'Islands');
   link.click();
   URL.revokeObjectURL(url);
 }

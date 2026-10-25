@@ -14,6 +14,10 @@
     if(project&&input.version!==1)throw new Error('Unsupported project version');
     const document=mask.readDocument(project?{config:input.config,generation_version:3}:input);
     const config=structuredClone(document.config);
+    config.name=project?(input.name??config.name??'Untitled Map'):(config.name??'Untitled Map');
+    if(typeof config.name!=='string')throw new Error('Map name must be text');
+    config.name=config.name.trim();
+    if(!config.name||config.name.length>120||/[\u0000-\u001f\u007f-\u009f]/.test(config.name))throw new Error('Map name must contain 1–120 characters without control characters');
     config.enabled??=true;
     config.painted_map??={version:1,step:4,size:64,tiles:[]};
     const resolved=mask.parseSeed(project?input.seed:seed);
@@ -33,6 +37,10 @@
     settings({radius,roughness}){
       if(!Number.isFinite(radius)||radius<8||radius>2048||!Number.isFinite(roughness)||roughness<0||roughness>1)throw new Error('Invalid brush settings');
       this.editor={...this.editor,radius,roughness};
+    }
+    rename(name){
+      if(typeof name!=='string'||!name.trim()||name.trim().length>120||/[\u0000-\u001f\u007f-\u009f]/.test(name))throw new Error('Map name must contain 1–120 characters without control characters');
+      if(name.trim()!==this.config.name){this.config={...this.config,name:name.trim()};this.revision++;}
     }
     begin({radius=128,roughness=.25,tool='land'}){
       if(this.stroke)throw new Error('Finish the current stroke first');
@@ -87,7 +95,7 @@
       this.restore(redo?item.after:item.before);to.push(item);this.revision++;return [...item.before.keys()];
     }
     preset(){return {...this.config,generation_version:3,painted_map:this.grid.toJSON()};}
-    project(view){return {format:'wge-map-project',version:1,seed:this.seed,config:this.preset(),editor:{...this.editor,view}};}
+    project(view){return {format:'wge-map-project',version:1,name:this.config.name,seed:this.seed,config:this.preset(),editor:{...this.editor,view}};}
   }
   root.WgeEditorModel={Model,validate,MAX_BYTES,BOUND};
   if(typeof module!=='undefined')module.exports=root.WgeEditorModel;

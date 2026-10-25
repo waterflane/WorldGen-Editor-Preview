@@ -23,12 +23,14 @@
     worker.addEventListener('message',({data:m})=>{
       if(m.type==='error'){
         if(m.seed!==undefined)$('editorSeed').value=m.seed;
+        if(m.name!==undefined)$('editorName').value=m.name;
         pendingLoad=false;epoch=m.epoch;tell(m.error,true);
         if(exports.has(m.id)){exports.get(m.id).reject(new Error(m.error));exports.delete(m.id);}return;
       }
       if(m.type==='loaded'){
         const preserve=m.preserveHistory;pendingLoad=false;loaded=true;epoch=m.epoch;currentBase=m.base;
         $('editorSeed').value=m.seed;$('brushRadius').value=m.editor.radius;$('brushRoughness').value=Math.round(m.editor.roughness*100);updateBrushLabels();
+        if(m.name!==undefined)$('editorName').value=m.name;
         if(!preserve){view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;}
         pendingView=null;
         baseCache.clear();paintCache.clear();renderBase();draw();return;
@@ -40,6 +42,7 @@
         draw();
       }
       if(m.type==='state'){
+        if(m.name!==undefined)$('editorName').value=m.name;
         const changed=m.revision!==revision;
         if(changed){revision=m.revision;dirty=true;}
         $('undoBrush').disabled=!m.canUndo;$('redoBrush').disabled=!m.canRedo;
@@ -150,6 +153,7 @@
     else open(event.detail.document,event.detail.seed,event.detail.view);
   });
   $('editorSeed').addEventListener('change',()=>{finishGesture();send('seed',{seed:$('editorSeed').value});});
+  $('editorName').addEventListener('change',()=>{finishGesture();send('name',{name:$('editorName').value});});
   $('newMapButton').addEventListener('click',()=>{if(okayToReplace())open({enabled:true,entries:[]},$('editorSeed').value,{x:0,z:0,blocksPerPixel:4});});
   $('importPreviewButton').addEventListener('click',()=>{if(okayToReplace()){const p=WgePreview.snapshot();open(p.document,p.seed,p.view);}});
   $('projectInput').addEventListener('change',async event=>{
@@ -161,8 +165,8 @@
     return new Promise((resolve,reject)=>{const id=++exportId;exports.set(id,{resolve,reject});send('export',{id,kind,view:{...view}});});
   }
   function download(text,name){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
-  $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,'island-map.wge.json');if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
-  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,'custom_map.json');tell(`Preset exported. Create a new WGE: Custom Map (v3) world with seed ${result.seed}.`);}catch(error){tell(error.message,true);}});
+  $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,result.filename);if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
+  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,result.filename);tell(`Preset exported. Add it to config/worldgen_editor/presets, select WGE: ${result.name} in World Type, and use seed ${result.seed}.`);}catch(error){tell(error.message,true);}});
   $('applyEditorButton').addEventListener('click',async()=>{
     try{const result=await exportDocument('apply');WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;updateStatus();switchTab(false);}catch(error){tell(error.message,true);}
   });

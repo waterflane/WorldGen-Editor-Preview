@@ -30,6 +30,12 @@
     mask.parseConfig(parsed.config,seed);
     return {...split(document),seedText:seed.toString()};
   }
-  root.WgeDocument={split,attach,prepare};
+  function filename(name,project=false){
+    let stem=String(name||'Island Map').trim().replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f]/g,'-').replace(/\s+/g,'-').slice(0,100).replace(/[. ]+$/g,'');
+    if(!stem||stem==='.'||stem==='..')stem='Island-Map';
+    if(/^(con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\.|$)/i.test(stem))stem='Map-'+stem;
+    return stem+(project?'.wge.json':'.json');
+  }
+  root.WgeDocument={split,attach,prepare,filename};
   if(typeof module!=='undefined')module.exports=root.WgeDocument;
 })(globalThis);

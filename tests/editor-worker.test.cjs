@@ -33,3 +33,15 @@ test('worker cancels a large obsolete brush cooperatively and rolls back its doc
   assert.ok(performance.now()-started<100,'cancellation must yield in 100 ms');
  }finally{await w.close();}
 });
+
+test('renaming a map updates both file formats and invalid names preserve the previous document',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{entries:[]},seed:'0'});await w.next(m=>m.type==='state');
+  w.send({type:'name',name:' Hidden Coast '});assert.equal((await w.next(m=>m.type==='state'&&m.revision===1)).name,'Hidden Coast');
+  w.send({type:'export',kind:'preset',id:10});
+  const preset=await w.next(m=>m.type==='export'&&m.id===10);assert.equal(preset.filename,'Hidden-Coast.json');assert.equal(JSON.parse(preset.text).name,'Hidden Coast');
+  w.send({type:'name',name:''});assert.equal((await w.next(m=>m.type==='error')).name,'Hidden Coast');
+  w.send({type:'export',kind:'project',id:11,view:{x:0,z:0,blocksPerPixel:4}});
+  const project=await w.next(m=>m.type==='export'&&m.id===11);assert.equal(project.filename,'Hidden-Coast.wge.json');assert.equal(JSON.parse(project.text).name,'Hidden Coast');
+ }finally{await w.close();}
+});
