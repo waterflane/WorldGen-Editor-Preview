@@ -51,12 +51,15 @@ The **Map Editor** tab shares the preview's navigation and document. Start with 
 - Left drag paints a continuous stroke. Middle drag or Space + drag pans; the wheel zooms.
 - Each stroke is one undo action. Use the buttons or Ctrl+Z / Ctrl+Shift+Z.
 - **Apply to Exact Preview** updates the exact Minecraft + WGE map. Drawing never starts Java generation. Unapplied changes are shown explicitly.
-- **Save Project** downloads a versioned `.wge.json` with seed, procedural base, paint and editor settings. **Export Preset** downloads a self-contained `custom_map.json`; use the displayed numeric seed when creating a new **WGE: Custom Map (v3)** world. Copy the preset into `config/worldgen_editor/presets/custom_map.json` first.
+- **Map name** is stored in the JSON `name` field and shown by Minecraft. It is independent of the downloaded filename and individual island names.
+- **Save Project** downloads a named `.wge.json` with seed, procedural base, paint and editor settings. **Export Preset** downloads a self-contained named `.json`. Add either file to `config/worldgen_editor/presets`, cycle Minecraft's **World Type** to **WGE: <map name>**, and use the numeric seed shown in the preview. The list updates while the creation screen is open; no renaming to `custom_map.json` is required.
 - IndexedDB keeps a recoverable local draft after edits. Use **Restore Draft** after reopening. Opening a clean document does not overwrite the recovery draft. Unsaved work triggers a navigation warning.
 
 Brush computation, validation and serialization run in workers. Only affected painted tiles are updated during a stroke; cached areas remain visible while panning/zooming. Large painted payloads stay separate from the main JSON text editor: it shows editable parameters, and **Download** includes the entire last applied preset. An explicit button removes the linked painted layer. Invalid imports leave the current document intact.
 
 Limits: 4-block grid, 64×64 samples/tile, 4096 sparse tiles, Minecraft coordinate bounds, 32 MiB per imported/exported file. Undo is bounded to 100 strokes and 32 MiB; a single stroke beyond the history limit is rolled back with an error. History is not exported. The first editor controls only land/ocean; biome, height, river and structure tools are outside this version.
+
+The old **Custom Map (v3)** was a fixed world type for one filename. Current WGE discovers each named JSON as a separate choice and selects generation v3 for painted maps. The old empty template is shown as **Empty Ocean**; old saves remain readable. Editor projects are accepted by Minecraft as well as the dedicated preset export. Their saved seed is informational and does not override the seed entered in Minecraft.
 
 The Java API uses protocol 2 and advertises generation versions 1/2/3 and painted-map support. Update both repositories and prepare the runtime after Java changes. Exact preview has separate caches/revisions from the editor draft and supports **Minecraft + WGE** only, including when the exported map will be used in a modded world.
 
