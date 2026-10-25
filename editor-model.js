@@ -42,6 +42,14 @@
       if(typeof name!=='string'||!name.trim()||name.trim().length>120||/[\u0000-\u001f\u007f-\u009f]/.test(name))throw new Error('Map name must contain 1–120 characters without control characters');
       if(name.trim()!==this.config.name){this.config={...this.config,name:name.trim()};this.revision++;}
     }
+    oceanTemperature(value){
+      if(this.stroke)throw new Error('Finish the stroke before changing ocean temperature');
+      if(!['','temperate','cold','warm'].includes(value))throw new Error('Invalid coastal ocean temperature');
+      if((this.config.ocean_temperature??'')===value)return;
+      this.config={...this.config};
+      if(value)this.config.ocean_temperature=value;else delete this.config.ocean_temperature;
+      this.revision++;
+    }
     begin({radius=128,roughness=.25,tool='land'}){
       if(this.stroke)throw new Error('Finish the current stroke first');
       if(!['land','ocean'].includes(tool))throw new Error('Invalid brush');

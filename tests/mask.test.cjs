@@ -209,3 +209,19 @@ test('enabling relief requests exact heights instead of reusing biome-only ocean
  }finally{global.fetch=original;}
 });
 
+test('ocean temperature opens a new session and never reuses the previous biome tiles',async()=>{
+ const original=global.fetch;let sessions=0,requests=0;
+ global.fetch=async(url,options)=>{
+  const q=JSON.parse(options.body);
+  if(url==='/api/session'){sessions++;return {ok:true,json:async()=>({session:q.config.ocean_temperature||'default',request_base:0})};}
+  requests++;return {ok:true,json:async()=>({palette:[q.session==='cold'?'minecraft:frozen_ocean':'minecraft:ocean'],biomes:Array(q.size*q.size).fill(0),heights:Array(q.size*q.size).fill(63)})};
+ };
+ try{
+  const renderer=create(),base={...message(),source:'biomes',backendAvailable:true};
+  const normal=await renderer.render(base,()=>true);assert.deepEqual(normal.palette,['minecraft:ocean']);const count=requests;
+  await renderer.render({...base,id:2},()=>true);assert.equal(requests,count);assert.equal(sessions,1);
+  const cold=await renderer.render({...base,id:3,configText:JSON.stringify({...raw,ocean_temperature:'cold'})},()=>true);
+  assert.deepEqual(cold.palette,['minecraft:frozen_ocean']);assert.equal(sessions,2);assert.ok(requests>count);
+ }finally{global.fetch=original;}
+});
+

@@ -46,3 +46,17 @@ test('map name survives project and preset export independently of its filename'
  assert.throws(()=>model.rename(''));assert.throws(()=>model.rename('bad\nname'));
  assert.equal(model.config.name,'Hidden Coast');
 });
+
+test('ocean temperature persists in projects and presets without changing paint or stroke history',async()=>{
+ const model=new Model(blank(),'2');await stroke(model,'land',[[-257,-257],[16,16]]);
+ const paint=model.grid.toJSON(),history=model.undoStack.length;
+ for(const value of ['temperate','cold','warm','']){
+  const revision=model.revision;model.oceanTemperature(value);assert.equal(model.revision,revision+1);
+  assert.equal(model.config.ocean_temperature,value||undefined);
+  assert.deepEqual(new Model(model.project({x:0,z:0,blocksPerPixel:4})).preset(),model.preset());
+  assert.deepEqual(model.grid.toJSON(),paint);assert.equal(model.undoStack.length,history);
+ }
+ assert.equal(Object.hasOwn(model.preset(),'ocean_temperature'),false);
+ const before=model.preset();assert.throws(()=>model.oceanTemperature('auto'));assert.deepEqual(model.preset(),before);
+ for(const ocean_temperature of [null,{},true,2,'standard','hot','WARM'])assert.throws(()=>validate({...blank(),ocean_temperature}));
+});

@@ -21,7 +21,7 @@ function patch(keys){
   }
   if(tiles.length)self.postMessage({type:'patch',epoch,operation,tiles},tiles.map(t=>t.buffer));
 }
-function state(){self.postMessage({type:'state',epoch,operation,name:model.config.name,revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
+function state(){self.postMessage({type:'state',epoch,operation,name:model.config.name,oceanTemperature:model.config.ocean_temperature??'',revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size});}
 async function drain(){
   running=true;
   while(queue.length){const message=queue.shift();
@@ -49,6 +49,7 @@ async function drain(){
       else if(message.type==='begin'){operation=message.operation||0;model.begin(message.brush);}
       else if(message.type==='settings')model.settings(message.editor);
       else if(message.type==='name'){model.rename(message.name);state();}
+      else if(message.type==='ocean-temperature'){model.oceanTemperature(message.value);state();}
       else if(message.type==='points'){for(const point of message.points){if(message.epoch!==epoch)break;await model.point(point.x,point.z,patch,()=>message.epoch===epoch);}}
       else if(message.type==='end'){model.end();state();}
       else if(message.type==='cancel'){patch(model.cancel());state();}
@@ -62,7 +63,7 @@ async function drain(){
         if(new TextEncoder().encode(text).length>WgeEditorModel.MAX_BYTES)throw new Error('Export exceeds the 32 MiB limit');
         self.postMessage({type:'export',id:message.id,epoch,kind:message.kind,text,seed:model.seed,revision:model.revision,filename:WgeDocument.filename(model.config.name,message.kind==='project'),name:model.config.name});
       }
-    }catch(error){if(model?.stroke)patch(model.cancel());self.postMessage({type:'error',id:message.id,epoch,error:error.message,seed:model?.seed,name:model?.config.name});}
+    }catch(error){if(model?.stroke)patch(model.cancel());self.postMessage({type:'error',id:message.id,epoch,error:error.message,seed:model?.seed,name:model?.config.name,oceanTemperature:model?.config.ocean_temperature??''});}
   }
   running=false;
 }

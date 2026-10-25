@@ -51,6 +51,7 @@ function parseConfig(input, seed) {
   if (input.enabled != null && typeof input.enabled !== "boolean") throw new Error("enabled must be boolean");
   if(input.name!=null&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>120||/[\u0000-\u001f\u007f-\u009f]/.test(input.name)))throw new Error('name must contain 1–120 characters without control characters');
   if (input.outer_ocean != null && (typeof input.outer_ocean !== "string" || !/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(input.outer_ocean))) throw new Error("outer_ocean is invalid");
+  if (Object.hasOwn(input,'ocean_temperature') && !['temperate','cold','warm'].includes(input.ocean_temperature)) throw new Error('ocean_temperature must be temperate, cold or warm; omit it for default behavior');
   const compiledEntries = [];
   const landShapes = [];
   const oceanShapes = [];

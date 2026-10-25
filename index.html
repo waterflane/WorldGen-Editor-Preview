@@ -28,6 +28,8 @@
         <div class="toolbar"><label for="projectInput" class="file-button">Open Project / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Restore Draft</button></div>
         <label>Map name<input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label>
         <label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
+        <label>Coastal ocean temperature<select id="oceanTemperature"><option value="">Default</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label>
+        <p class="editor-help">Default uses explicit island temperatures, otherwise Ocean / Deep Ocean. This setting overrides island ocean temperatures only. The external ocean is set separately by outer_ocean in JSON.</p>
         <div class="toolbar" role="group" aria-label="Brushes"><button id="landBrush" type="button" aria-pressed="true">Land</button><button id="oceanBrush" type="button" aria-pressed="false">Ocean</button></div>
         <label><span>Brush radius: <output id="brushRadiusValue">128</output> blocks</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
         <label><span>Shore roughness: <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>

@@ -24,6 +24,7 @@
       if(m.type==='error'){
         if(m.seed!==undefined)$('editorSeed').value=m.seed;
         if(m.name!==undefined)$('editorName').value=m.name;
+        if(m.oceanTemperature!==undefined)$('oceanTemperature').value=m.oceanTemperature;
         pendingLoad=false;epoch=m.epoch;tell(m.error,true);
         if(exports.has(m.id)){exports.get(m.id).reject(new Error(m.error));exports.delete(m.id);}return;
       }
@@ -31,6 +32,7 @@
         const preserve=m.preserveHistory;pendingLoad=false;loaded=true;epoch=m.epoch;currentBase=m.base;
         $('editorSeed').value=m.seed;$('brushRadius').value=m.editor.radius;$('brushRoughness').value=Math.round(m.editor.roughness*100);updateBrushLabels();
         if(m.name!==undefined)$('editorName').value=m.name;
+        $('oceanTemperature').value=m.base.ocean_temperature??'';
         if(!preserve){view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;}
         pendingView=null;
         baseCache.clear();paintCache.clear();renderBase();draw();return;
@@ -43,6 +45,7 @@
       }
       if(m.type==='state'){
         if(m.name!==undefined)$('editorName').value=m.name;
+        if(m.oceanTemperature!==undefined)$('oceanTemperature').value=m.oceanTemperature;
         const changed=m.revision!==revision;
         if(changed){revision=m.revision;dirty=true;}
         $('undoBrush').disabled=!m.canUndo;$('redoBrush').disabled=!m.canRedo;
@@ -154,6 +157,7 @@
   });
   $('editorSeed').addEventListener('change',()=>{finishGesture();send('seed',{seed:$('editorSeed').value});});
   $('editorName').addEventListener('change',()=>{finishGesture();send('name',{name:$('editorName').value});});
+  $('oceanTemperature').addEventListener('change',()=>{finishGesture();send('ocean-temperature',{value:$('oceanTemperature').value});});
   $('newMapButton').addEventListener('click',()=>{if(okayToReplace())open({enabled:true,entries:[]},$('editorSeed').value,{x:0,z:0,blocksPerPixel:4});});
   $('importPreviewButton').addEventListener('click',()=>{if(okayToReplace()){const p=WgePreview.snapshot();open(p.document,p.seed,p.view);}});
   $('projectInput').addEventListener('change',async event=>{

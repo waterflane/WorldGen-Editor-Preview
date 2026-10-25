@@ -45,3 +45,21 @@ test('renaming a map updates both file formats and invalid names preserve the pr
   const project=await w.next(m=>m.type==='export'&&m.id===11);assert.equal(project.filename,'Hidden-Coast.wge.json');assert.equal(JSON.parse(project.text).name,'Hidden Coast');
  }finally{await w.close();}
 });
+
+test('ocean setting changes are serialized, exported for Apply and restored from a saved draft',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{entries:[]},seed:'2'});await w.next(m=>m.type==='state');
+  w.send({type:'ocean-temperature',value:'cold'});
+  const state=await w.next(m=>m.type==='state'&&m.revision===1);assert.equal(state.oceanTemperature,'cold');assert.equal(state.canUndo,false);
+  w.send({type:'export',kind:'apply',id:20});
+  assert.equal(JSON.parse((await w.next(m=>m.type==='export'&&m.id===20)).metadataText).ocean_temperature,'cold');
+  w.send({type:'export',kind:'project',id:21,view:{x:0,z:0,blocksPerPixel:4}});
+  const draft=(await w.next(m=>m.type==='export'&&m.id===21)).text;
+  w.send({type:'ocean-temperature',value:'invalid'});assert.equal((await w.next(m=>m.type==='error')).oceanTemperature,'cold');
+  w.send({type:'load',input:JSON.stringify({entries:[],ocean_temperature:null}),seed:'2'});await w.next(m=>m.type==='error');
+  w.send({type:'export',kind:'project',id:22,view:{x:0,z:0,blocksPerPixel:4}});
+  assert.equal((await w.next(m=>m.type==='export'&&m.id===22)).text,draft);
+  w.send({type:'ocean-temperature',value:''});assert.equal((await w.next(m=>m.type==='state'&&m.revision===2)).oceanTemperature,'');
+  w.send({type:'load',input:draft});assert.equal((await w.next(m=>m.type==='state'&&m.revision===0)).oceanTemperature,'cold');
+ }finally{await w.close();}
+});
