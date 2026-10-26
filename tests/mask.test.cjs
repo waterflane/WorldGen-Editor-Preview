@@ -50,7 +50,7 @@ test('world snapshots retain legacy versions and per-world enable flag',()=>{
  const document=core.readDocument({generation_version:1,enabled:false,config:raw});
  assert.equal(document.generationVersion,1);assert.equal(document.config.enabled,false);assert.equal(raw.enabled,true);
  assert.equal(core.readDocument({config:raw}).generationVersion,1);
- assert.throws(()=>core.readDocument({generation_version:4,config:raw}));
+ assert.throws(()=>core.readDocument({generation_version:5,config:raw}));
 });
 
 test('HTTP work can be aborted while the Java tile is still computing',async()=>{

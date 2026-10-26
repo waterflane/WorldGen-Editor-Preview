@@ -92,3 +92,17 @@ test('conversion creates an editable island, exports its contour and undoes as o
   w.send({type:'export',kind:'preset',id:51});const before=JSON.parse((await w.next(m=>m.type==='export'&&m.id===51)).text);assert.equal(before.entries.length,0);assert.ok(before.painted_map.tiles.length);
  }finally{await w.close();}
 });
+
+test('coast profiles are exported for exact Apply and invalid edits cannot replace a saved draft',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{entries:[{x:0,z:0,radius:160}]},seed:'2'});await w.next(m=>m.type==='state');
+  const coast={beach_width_blocks:32,shallow_ocean_width_blocks:256};w.send({type:'entry-change',index:0,patch:{coast}});await w.next(m=>m.type==='state'&&m.revision===1);
+  w.send({type:'export',kind:'apply',id:71});const applied=JSON.parse((await w.next(m=>m.type==='export'&&m.id===71)).metadataText);
+  assert.equal(applied.generation_version,4);assert.deepEqual(applied.entries[0].coast,coast);
+  w.send({type:'export',kind:'project',id:72});const draft=(await w.next(m=>m.type==='export'&&m.id===72)).text;
+  w.send({type:'entry-change',index:0,patch:{coast:{...coast,beach_width_blocks:-1}}});await w.next(m=>m.type==='error');
+  w.send({type:'export',kind:'project',id:73});assert.equal((await w.next(m=>m.type==='export'&&m.id===73)).text,draft);
+  w.send({type:'load',input:draft,seed:'2'});await w.next(m=>m.type==='state'&&m.revision===0);
+  w.send({type:'export',kind:'preset',id:74});assert.deepEqual(JSON.parse((await w.next(m=>m.type==='export'&&m.id===74)).text).entries[0].coast,coast);
+ }finally{await w.close();}
+});

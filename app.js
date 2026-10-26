@@ -106,9 +106,9 @@ updateModeControls();
 for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener("change",()=>{updateModeControls();requestRender();});
 if (location.protocol !== "file:") fetch("/api/info").then(r=>r.json()).then(info=>{
   backendAvailable=info.protocol===2&&info.minecraft==="1.21.1"
-    &&[1,2,3].every(version=>info.supported_generation_versions?.includes(version))
-    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('vanilla_wge_only')&&info.capabilities?.includes('ocean_temperature_v1')&&info.capabilities?.includes('island_outline_v1');
-  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2, generation 1/2/3, painted maps, ocean temperature rules and island outlines for Minecraft 1.21.1; prepare the updated runtime";
+    &&[1,2,3,4].every(version=>info.supported_generation_versions?.includes(version))
+    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('vanilla_wge_only')&&info.capabilities?.includes('ocean_temperature_v1')&&info.capabilities?.includes('island_outline_v1')&&info.capabilities?.includes('coast_profile_v1');
+  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2, generation 1/2/3/4, painted maps, ocean temperature rules, island outlines and coast profiles for Minecraft 1.21.1; prepare the updated runtime";
   if(backendAvailable){mapSource.value="biomes";updateModeControls();requestRender();}
 }).catch(()=>{});
 let renderWorker = null;

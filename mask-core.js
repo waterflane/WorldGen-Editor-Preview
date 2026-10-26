@@ -29,15 +29,18 @@ function readDocument(input) {
   if(input?.format!==undefined)throw new Error('Unsupported preview document format; open map projects in the map editor');
   if(input?.config){
     const version=input.generation_version===undefined?1:input.generation_version;
-    if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
+    if(!Number.isInteger(version)||version<1||version>4)throw new Error("Unsupported generation_version");
+    if(input.config.entries?.some?.(entry=>entry?.coast!==undefined)&&version<4)throw new Error("Custom coasts require generation_version 4");
     if(input.config.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
     if(input.config.entries?.some?.(entry=>entry?.outline!==undefined)&&version<3)throw new Error('Island outlines require generation_version 3');
     if(input.enabled!=null&&typeof input.enabled!=="boolean")throw new Error("World enabled must be boolean");
     return {config:{...input.config,enabled:(input.config.enabled??true)&&input.enabled!==false},generationVersion:version};
   }
   const outlines=input?.entries?.some?.(entry=>entry?.outline!==undefined);
-  const version=input?.generation_version??(input?.painted_map||outlines?3:2);
-  if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
+  const coasts=input?.entries?.some?.(entry=>entry?.coast!==undefined);
+  const version=input?.generation_version??(coasts?4:input?.painted_map||outlines?3:2);
+  if(!Number.isInteger(version)||version<1||version>4)throw new Error("Unsupported generation_version");
+  if(coasts&&version<4)throw new Error("Custom coasts require generation_version 4");
   if(input?.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
   if(outlines&&version<3)throw new Error('Island outlines require generation_version 3');
   return {config:input,generationVersion:version};
@@ -86,6 +89,7 @@ function parseConfig(input, seed) {
   compiledEntries.sourceSummaries = sourceSummaries;
   compiledEntries.paintedMap=paintedMap;
   compiledEntries.outlines=outlines;
+  if(sourceSummaries.some(e=>e.coast))compiledEntries.coastField=new CoastField(configPoint=>rawCoastInfo(input,compiledEntries,...configPoint),compiledEntries);
   return compiledEntries;
 }
 
@@ -140,6 +144,9 @@ function parseEntry(entry, index, seed) {
 
   const parsed = {
     type,
+    temperature,
+    excludedBiomes:entry.exclude_biomes||[],
+    coast:parseCoast(entry,path,type),
     name,
     overlap: Boolean(entry.overlap),
     centerX,
@@ -200,7 +207,104 @@ function parseEntryType(value, path) {
   throw new Error(`${path}.type must be one of island, outlined_island, ocean, archipelago`);
 }
 
-function sampleMask(config, compiled, blockX, blockZ) {
+function parseCoast(entry,path,type){
+  if(!Object.hasOwn(entry,'coast'))return null;
+  const c=entry.coast;
+  if(type==='ocean'||!c||typeof c!=='object'||Array.isArray(c))throw new Error(`${path}.coast requires a land object and both block widths`);
+  for(const key of ['beach_width_blocks','shallow_ocean_width_blocks'])if(!Number.isInteger(c[key])||c[key]<0||c[key]>4096)throw new Error(`${path}.coast.${key} must be an integer between 0 and 4096`);
+  return {beach_width_blocks:c.beach_width_blocks,shallow_ocean_width_blocks:c.shallow_ocean_width_blocks};
+}
+function rawCoastInfo(config,compiled,x,z){
+  const value=sampleRawMask(config,compiled,x,z);let owner=null,strongest=0;
+  for(const shape of shapesNear(compiled,'land',x,z)){const v=sampleIsland(shape,x,z);if(v>strongest){strongest=v;owner=shape;}}
+  const ix=Math.floor(x/4),iz=Math.floor(z/4),fx=x/4-ix,fz=z/4-iz;let best=0,overlay=null;
+  for(let dz=0;dz<2;dz++)for(let dx=0;dx<2;dx++){
+    const bx=(ix+dx)*4,bz=(iz+dz)*4;let influence=0,nodeOwner=null;
+    for(const shape of compiled.outlines){const px=bx-shape.centerX,pz=bz-shape.centerZ;if(Math.abs(px)>shape.outlineExtentX||Math.abs(pz)>shape.outlineExtentZ)continue;
+      const f=shape.outline.mask.field((px*shape.cos-pz*shape.sin)*shape.outlineScaleX,(px*shape.sin+pz*shape.cos)*shape.outlineScaleZ);
+      influence*=1-f.alpha;if(f.alpha>=influence&&f.alpha>0){nodeOwner=shape;influence=f.alpha;}}
+    if(compiled.paintedMap)influence*=1-(compiled.paintedMap.node(ix+dx,iz+dz)>>>16)/65535;
+    const weight=(dx?fx:1-fx)*(dz?fz:1-fz);if(nodeOwner&&weight*influence>best){best=weight*influence;overlay=nodeOwner;}
+  }
+  if(overlay)owner=overlay;
+  return {value,owner};
+}
+function coastValue(sample,raw){
+  const {distance,owner}=sample,b=owner.coast.beach_width_blocks,s=owner.coast.shallow_ocean_width_blocks;
+  if(distance>=0){if(b===0)return Math.max(.72,raw);if(distance<=b)return .54+.04*distance/b;
+    let t=Math.min(1,(distance-b)/64);t=t*t*(3-2*t);return .58+(Math.max(.58,raw)-.58)*t;}
+  const d=-distance;if(s>0&&d<=s)return .54-.46*d/s;
+  return Math.min(raw,.079*Math.max(0,1-(d-s)/64));
+}
+class CoastField {
+  constructor(raw,compiled){
+    this.raw=raw;this.emptyTiles=new Set();this.deadline=Infinity;this.tiles=new Map();this.hints=new Map();this.bounds=[];this.landReach=64;this.waterReach=64;
+    for(const shape of [...compiled.landShapes,...compiled.outlines])if(shape.coast){
+      let ex,ez;if(shape.outline){ex=shape.outlineExtentX;ez=shape.outlineExtentZ;}
+      else{const reach=shape.multiplier*(1+shape.noiseStrength)+shape.edgeWidth,rx=shape.xDivisor*reach,rz=shape.zDivisor*reach;ex=Math.abs(shape.cos)*rx+Math.abs(shape.sin)*rz+4;ez=Math.abs(shape.sin)*rx+Math.abs(shape.cos)*rz+4;}
+      this.bounds.push({minX:shape.centerX-ex,minZ:shape.centerZ-ez,maxX:shape.centerX+ex,maxZ:shape.centerZ+ez});
+      this.landReach=Math.max(this.landReach,shape.coast.beach_width_blocks+64);this.waterReach=Math.max(this.waterReach,shape.coast.shallow_ocean_width_blocks+64);
+    }
+  }
+  remember(cache,key,value,max){cache.delete(key);cache.set(key,value);while(cache.size>max)cache.delete(cache.keys().next().value);return value;}
+  distance(s,x,z){const dx=s.bx-s.ax,dz=s.bz-s.az,t=Math.max(0,Math.min(1,((x-s.ax)*dx+(z-s.az)*dz)/(dx*dx+dz*dz)));return Math.hypot(x-s.ax-t*dx,z-s.az-t*dz);}
+  band(segment,land){return land?segment.owner.coast.beach_width_blocks:segment.owner.coast.shallow_ocean_width_blocks;}
+  sample(x,z,raw){
+    const land=raw.value>=.54;if(land&&!raw.owner?.coast)return null;
+    let best=land?this.landReach:this.waterReach;const key=`${Math.floor(x/64)}:${Math.floor(z/64)}`;let nearest=this.hints.get(key);
+    if(nearest){const d=this.distance(nearest,x,z);if(d<=best&&d<=this.band(nearest,land)&&this.band(nearest,land)>0)best=Math.min(land?this.landReach:this.waterReach,d+1e-9);nearest=null;}
+    let recovery=null,recoveryDistance=land?this.landReach:this.waterReach;
+    const seen=new Set(),candidates=[];
+    for(const b of this.bounds){
+      const minX=Math.floor(Math.max(b.minX,x-best)/64),maxX=Math.floor(Math.min(b.maxX,x+best)/64),minZ=Math.floor(Math.max(b.minZ,z-best)/64),maxZ=Math.floor(Math.min(b.maxZ,z+best)/64);
+      for(let tz=minZ;tz<=maxZ;tz++)for(let tx=minX;tx<=maxX;tx++){
+        const distance=Math.hypot(Math.max(0,tx*64-x,x-(tx+1)*64),Math.max(0,tz*64-z,z-(tz+1)*64)),id=`${tx}:${tz}`;
+        if(distance<=best&&!seen.has(id)){seen.add(id);candidates.push({x:tx,z:tz,distance});}
+      }
+    }
+    candidates.sort((a,b)=>a.distance-b.distance||a.z-b.z||a.x-b.x);
+    for(const candidate of candidates){if(candidate.distance>best)break;for(const segment of this.tile(candidate.x,candidate.z)){const d=this.distance(segment,x,z),width=this.band(segment,land);if(width>0&&d<=width&&d<best){best=d;nearest=segment;}else if(d<=width+64&&d<recoveryDistance){recoveryDistance=d;recovery=segment;}}}
+    if(!nearest){nearest=recovery;best=recoveryDistance;}
+    if(nearest){this.remember(this.hints,key,nearest,1024);const limit=(land?nearest.owner.coast.beach_width_blocks:nearest.owner.coast.shallow_ocean_width_blocks)+64;if(best<=limit)return {distance:land?best:-Math.max(1e-9,best),owner:nearest.owner};}
+    return raw.owner?.coast?{distance:land?Infinity:-Infinity,owner:raw.owner}:null;
+  }
+  tile(tx,tz){
+    const key=`${tx}:${tz}`;if(this.emptyTiles.has(key))return [];if(this.tiles.has(key)){const value=this.tiles.get(key);return this.remember(this.tiles,key,value,512);}
+    if(performance.now()>this.deadline)throw COAST_YIELD;
+    const nodes=[],segments=[];for(let z=0;z<=16;z++)for(let x=0;x<=16;x++)nodes.push(this.raw([tx*64+x*4,tz*64+z*4]));
+    for(let z=0;z<16;z++)for(let x=0;x<16;x++){
+      const bx=tx*64+x*4,bz=tz*64+z*4,a=nodes[z*17+x],b=nodes[z*17+x+1],c=nodes[(z+1)*17+x+1],d=nodes[(z+1)*17+x];
+      this.triangle(segments,[bx,bz,a],[bx+4,bz,b],[bx+4,bz+4,c]);this.triangle(segments,[bx,bz,a],[bx+4,bz+4,c],[bx,bz+4,d]);
+    }if(!segments.length){this.emptyTiles.add(key);if(this.emptyTiles.size>32768)this.emptyTiles.delete(this.emptyTiles.values().next().value);return segments;}return this.remember(this.tiles,key,segments,512);
+  }
+  triangle(output,...points){
+    if(points.every(p=>p[2].value>=.54)||points.every(p=>p[2].value<.54))return;
+    const crossings=[];for(let i=0;i<3;i++){const a=points[i],b=points[(i+1)%3];if((a[2].value>=.54)===(b[2].value>=.54))continue;
+      const t=(.54-a[2].value)/(b[2].value-a[2].value);crossings.push([a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1])]);}
+    const owner=points.find(p=>p[2].value>=.54)[2].owner;
+    if(crossings.length===2&&owner?.coast&&Math.hypot(crossings[1][0]-crossings[0][0],crossings[1][1]-crossings[0][1])>1e-12)output.push({ax:crossings[0][0],az:crossings[0][1],bx:crossings[1][0],bz:crossings[1][1],owner});
+  }
+}
+
+const COAST_YIELD={};
+async function sampleMaskAsync(config,compiled,x,z,details,active,yieldWork){
+  if(!compiled.coastField)return sampleMask(config,compiled,x,z,details);
+  for(;;){
+    if(!active())return null;
+    compiled.coastField.deadline=performance.now()+8;
+    try{return sampleMask(config,compiled,x,z,details);}catch(error){if(error!==COAST_YIELD)throw error;}
+    finally{compiled.coastField.deadline=Infinity;}
+    await yieldWork();
+  }
+}
+function sampleMask(config,compiled,x,z,details){
+  if(config.enabled===false)return 0;
+  if(!compiled.coastField)return sampleRawMask(config,compiled,x,z);
+  const raw=rawCoastInfo(config,compiled,x,z),coast=compiled.coastField.sample(x,z,raw);
+  if(details&&coast){const d=coast.distance,c=coast.owner.coast;details.zone=d<0?(-d<=c.shallow_ocean_width_blocks?2:1):d<=c.beach_width_blocks&&c.beach_width_blocks>0?3:4;}
+  return coast?coastValue(coast,raw.value):raw.value;
+}
+function sampleRawMask(config, compiled, blockX, blockZ) {
   if (config.enabled === false) return 0;
   let union = 0;
   let additive = 0;
@@ -334,6 +438,9 @@ function compileArchipelago(entry, seed) {
           type: "island",
           name: `${entry.name} ${index + 1}`,
           overlap: entry.overlap,
+          coast:entry.coast,
+          temperature:entry.temperature,
+          excludedBiomes:entry.excludedBiomes,
           centerX,
           centerZ,
           xDivisor,
@@ -542,7 +649,7 @@ function clamp(value, min, max) {
 }
 
 
-const api={readDocument,parseConfig,parseSeed,sampleMask,sampleIsland,clamp,smoothstep,lerp,stableStringSeed,FULL_OCEAN_MASK,LAND_MASK,BEACH_START_MASK,DEEP_OCEAN_MASK};
+const api={readDocument,parseConfig,parseSeed,sampleMask,sampleMaskAsync,sampleRawMask,rawCoastInfo,coastValue,sampleIsland,clamp,smoothstep,lerp,stableStringSeed,FULL_OCEAN_MASK,LAND_MASK,BEACH_START_MASK,DEEP_OCEAN_MASK};
 root.WgeMask=api;
 if(typeof module!=="undefined") module.exports=api;
 })(globalThis);

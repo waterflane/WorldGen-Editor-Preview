@@ -82,7 +82,7 @@
       const finerLevels=[...levels].filter(level=>level<step).sort((a,b)=>a-b);
       function fromFinerCache(x,z){
         if(!finerLevels.length)return null;
-        const tile=java?{palette:[],biomes:[],heights:[]}:{values:new Float64Array(size*size)};
+        const tile=java?{palette:[],biomes:[],heights:[]}:{values:new Float64Array(size*size),zones:new Uint8Array(size*size)};
         for(let row=0;row<size;row++)for(let col=0;col<size;col++){
           const bx=x+col*step,bz=z+row*step,i=row*size+col;let found=false;
           for(const level of finerLevels){
@@ -92,7 +92,7 @@
             const j=(bz/level-tz*size)*size+bx/level-tx*size;
             if(java){const id=cached.palette[cached.biomes[j]];let index=tile.palette.indexOf(id);
               if(index<0){index=tile.palette.length;tile.palette.push(id);}tile.biomes[i]=index;tile.heights[i]=cached.heights[j];
-            }else tile.values[i]=cached.values[j];
+            }else {tile.values[i]=cached.values[j];tile.zones[i]=cached.zones?.[j]||0;}
             found=true;break;
           }
           if(!found)return null;
@@ -110,10 +110,10 @@
           tile=await post("/api/tile",{session:session.session,client,request:(session.request_base||0)+message.id,x,z,step,size,height_mode:message.heightMode==="surface"?"surface":"slice",y:Number(message.heightMode)||0,include_heights:includeHeights},active);
           if(!tile)return null;
         }else if(!tile){
-          tile={values:new Float64Array(size*size)};
+          tile={values:new Float64Array(size*size),zones:new Uint8Array(size*size)};
           let budget=performance.now();
           for(let row=0;row<size;row++){
-            for(let col=0;col<size;col++)tile.values[row*size+col]=WgeMask.sampleMask(config,compiled,x+col*step,z+row*step);
+            for(let col=0;col<size;col++){const details={},i=row*size+col;const value=await WgeMask.sampleMaskAsync(config,compiled,x+col*step,z+row*step,details,active,wait);if(value===null)return null;tile.values[i]=value;tile.zones[i]=details.zone||0;}
             if(performance.now()-budget>8){await wait();budget=performance.now();}if(!active())return null;
           }
         }
@@ -135,7 +135,7 @@
       const emitted=new Set(),visualTiles=[];
       function colorAt(tile,i){
         if(!java){
-          const value=tile.values[i];let color=inactive?[48,53,60]:maskColor(value);
+          const value=tile.values[i];let color=inactive?[48,53,60]:({1:[22,63,104],2:[38,118,166],3:[216,202,142],4:maskColor(Math.max(.58,value))}[tile.zones?.[i]]||maskColor(value));
           if(!inactive&&message.shores&&(Math.abs(value-.50)<.012||Math.abs(value-.58)<.012))color=color.map(v=>Math.round(v*.55+240*.45));
           return color;
         }

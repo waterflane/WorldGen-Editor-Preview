@@ -121,3 +121,17 @@ test('moving a donut moves its ocean cutout and every fractional coast sample',a
  await m.selectPaint(432,0);m.transformPaint(0,0,true);
  for(const [x,z]of snapshot)assert.equal(m.grid.apply(0,x+512,z),0);
 });
+
+test('open ocean channels move without stealing disconnected islands or outside ocean paint',async()=>{
+ const m=new Model(blank(),'2');
+ m.begin({tool:'land',radius:96,roughness:.5});await m.point(-257,-257);m.end();
+ m.begin({tool:'ocean',radius:28,roughness:0});await m.point(-257,-257);await m.point(-257,-100);m.end();
+ await stroke(m,'land',[[40,-257]]);await stroke(m,'ocean',[[-500,-257]]);
+ const outside=m.grid.node(-125,-64),neighbor=m.grid.apply(0,40,-257),before=m.grid.toJSON();
+ const noSelection=await m.selectPaint(-300,-257,()=>false);assert.equal(noSelection,null);assert.deepEqual(m.grid.toJSON(),before);
+ await m.selectPaint(-300,-257);m.transformPaint(-512,-256);
+ for(let z=-380;z<-130;z+=4)for(let x=-380;x<-130;x+=4)assert.equal(m.grid.apply(0,x,z),0,`open cut residue ${x},${z}`);
+ assert.equal(m.grid.node(-125,-64),outside);assert.equal(m.grid.apply(0,40,-257),neighbor);
+ await m.selectPaint(-812,-513);m.transformPaint(1024,0);assert.ok(m.grid.apply(0,212,-513)>.5);
+ const restored=new Model(m.project());assert.deepEqual(restored.preset(),m.preset());
+});

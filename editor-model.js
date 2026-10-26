@@ -9,10 +9,11 @@
     const ix=Math.floor(x),iz=Math.floor(z),u=x-ix,v=z-iz,s=u*u*(3-2*u),t=v*v*(3-2*v);
     return (hash(ix,iz)*(1-s)+hash(ix+1,iz)*s)*(1-t)+(hash(ix,iz+1)*(1-s)+hash(ix+1,iz+1)*s)*t;
   }
+  const targetVersion=config=>Math.max(3,config.generation_version||3,config.entries?.some(e=>e.coast!==undefined)?4:3);
   function validate(input,seed='0'){
     const project=input?.format==='wge-map-project';
     if(project&&input.version!==1)throw new Error('Unsupported project version');
-    const document=mask.readDocument(project?{config:input.config,generation_version:3}:input);
+    const document=mask.readDocument(project?{config:input.config,generation_version:input.config?.generation_version??3}:input);
     const config=structuredClone(document.config);
     config.name=project?(input.name??config.name??'Untitled Map'):(config.name??'Untitled Map');
     if(typeof config.name!=='string')throw new Error('Map name must be text');
@@ -58,8 +59,8 @@
     configure(config,seed=this.seed){
       if(this.stroke)throw new Error('Finish the current stroke first');
       const next={...config};delete next.painted_map;
-      // Editor documents target new v3 worlds; legacy inputs remain readable until edited.
-      const parsed=validate({...next,generation_version:3,painted_map:this.grid.toJSON()},seed),before={config:this.config,seed:this.seed};
+      // New coast profiles opt into v4; other edits preserve the document generation version.
+      const parsed=validate({...next,generation_version:targetVersion(next),painted_map:this.grid.toJSON()},seed),before={config:this.config,seed:this.seed};
       // Keep sparse paint and its undo history out of parameter edits.
       const after={config:{...parsed.config,painted_map:this.config.painted_map},seed:parsed.seed};
       const withoutPaint=value=>{const copy={...value.config};delete copy.painted_map;return {config:copy,seed:value.seed};};
@@ -70,6 +71,7 @@
     changeEntry(index,patch){
       if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
       const entries=this.config.entries.slice();entries[index]={...entries[index],...patch};
+      if(patch.coast===null)delete entries[index].coast;
       if(patch.noise)entries[index].noise={...this.config.entries[index].noise,...patch.noise};
       // A changed canonical radius must not be shadowed by a legacy alias.
       for(const [key,alias] of [['x','center_x'],['z','center_z'],['radius_x','x_divisor'],['radius_z','z_divisor'],['rotation','rotation_degrees'],['roughness','noise_strength'],['shore_width','edge_width']])if(Object.hasOwn(patch,key))delete entries[index][alias];
@@ -166,7 +168,7 @@
       const names=new Set(this.config.entries.map(entry=>entry.name));let number=1;while(names.has(`Painted Island ${number}`))number++;
       const entry={type:'outlined_island',name:`Painted Island ${number}`,x:cx*STEP,z:cz*STEP,radius_x:rx,radius_z:rz,
         rotation:0,temperature:'standard',roughness:0,shore_width:.001,outline:{radius_x:rx,radius_z:rz,mask:local.toJSON()}};
-      const config={...this.config,generation_version:3,entries:[...this.config.entries,entry]};
+      const config={...this.config,generation_version:targetVersion(this.config),entries:[...this.config.entries,entry]};
       const tiles=new Map();for(const [x,z]of cells){const key=`${Math.floor(x/SIZE)}:${Math.floor(z/SIZE)}`;if(!tiles.has(key))tiles.set(key,this.grid.tiles.get(key).slice());}
       const metadata={...config};delete metadata.painted_map;
       const bytes=tiles.size*SIZE*SIZE*8+new TextEncoder().encode(JSON.stringify(metadata)).length*2;
@@ -236,7 +238,7 @@
       if(item.kind==='document'){Object.assign(this,redo?item.after:item.before);return [...this.grid.tiles.keys()];}
       this.restore(redo?item.after:item.before);return [...item.before.keys()];
     }
-    preset(){return {...this.config,generation_version:3,painted_map:this.grid.toJSON()};}
+    preset(){return {...this.config,generation_version:targetVersion(this.config),painted_map:this.grid.toJSON()};}
     project(view){return {format:'wge-map-project',version:1,name:this.config.name,seed:this.seed,config:this.preset(),editor:{...this.editor,view}};}
   }
   root.WgeEditorModel={Model,validate,MAX_BYTES,BOUND};
