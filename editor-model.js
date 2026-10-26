@@ -91,7 +91,8 @@
     }
     async selectPaint(x,z,active=()=>true){
       const start=[Math.round(x/STEP),Math.round(z/STEP)];
-      const land=p=>(p>>>16)>0&&(p&65535)>32767;
+      // Keep every positive feather sample, not just the visible land core.
+      const land=p=>(p>>>16)>0&&(p&65535)>0;
       if(!land(this.grid.node(...start))){this.paintSelection=null;return null;}
       const visited=new Map(),queue=[start],cells=[];let head=0,budget=performance.now(),minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
       while(head<queue.length){
@@ -103,6 +104,23 @@
         queue.push([gx-1,gz],[gx+1,gz],[gx,gz-1],[gx,gz+1]);
         if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}
       }
+      // Enclosed painted ocean belongs to this component too. The same payload
+      // is used for move, delete and conversion so holes never get left behind.
+      const width=maxX-minX+1,height=maxZ-minZ+1;
+      if(width*height>1048576)throw new Error('Island bounds exceed 1048576 samples; select a smaller connected region');
+      const points=new Set(cells.map(([x,z])=>`${x}:${z}`)),outside=new Uint8Array(width*height),flood=new Int32Array(width*height);
+      let first=0,last=0;
+      const push=(x,z)=>{const i=z*width+x;if(outside[i]||points.has(`${x+minX}:${z+minZ}`))return;outside[i]=1;flood[last++]=i;};
+      for(let x=0;x<width;x++){push(x,0);push(x,height-1);}for(let z=0;z<height;z++){push(0,z);push(width-1,z);}
+      while(first<last){const i=flood[first++],x=i%width,z=Math.floor(i/width);if(x)push(x-1,z);if(x+1<width)push(x+1,z);if(z)push(x,z-1);if(z+1<height)push(x,z+1);
+        if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}}
+      for(let z=0;z<height;z++){
+        for(let x=0;x<width;x++)if(!outside[z*width+x]&&!points.has(`${x+minX}:${z+minZ}`)){
+          const p=this.grid.node(x+minX,z+minZ);if((p>>>16)>0&&(p&65535)===0)cells.push([x+minX,z+minZ,p]);
+        }
+        if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}
+      }
+      if(!active())return null;
       const bounds={minX:minX*STEP-STEP,minZ:minZ*STEP-STEP,maxX:maxX*STEP+STEP,maxZ:maxZ*STEP+STEP};
       const summary={bounds,x:(bounds.minX+bounds.maxX)/2,z:(bounds.minZ+bounds.maxZ)/2,anchorX:start[0]*STEP,anchorZ:start[1]*STEP,samples:cells.length,revision:this.revision};
       this.paintSelection={cells,summary};return summary;
@@ -140,20 +158,6 @@
       const selection=this.paintSelection,cells=selection.cells.slice(),points=new Set(cells.map(([x,z])=>`${x}:${z}`));
       let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
       for(const [x,z]of cells){minX=Math.min(minX,x);minZ=Math.min(minZ,z);maxX=Math.max(maxX,x);maxZ=Math.max(maxZ,z);}
-      const width=maxX-minX+1,height=maxZ-minZ+1;
-      if(width*height>1048576)throw new Error('Island bounds exceed 1048576 samples; convert a smaller connected region');
-      // Retain explicitly painted ocean holes inside the selected coastline, without
-      // stealing disconnected land objects or unrelated ocean outside its boundary.
-      if(width*height<=1048576){
-        const visited=new Uint8Array(width*height),queue=new Int32Array(width*height);let head=0,tail=0,budget=performance.now();
-        const push=(x,z)=>{const i=z*width+x;if(visited[i]||points.has(`${x+minX}:${z+minZ}`))return;visited[i]=1;queue[tail++]=i;};
-        for(let x=0;x<width;x++){push(x,0);push(x,height-1);}for(let z=0;z<height;z++){push(0,z);push(width-1,z);}
-        while(head<tail){const i=queue[head++],x=i%width,z=Math.floor(i/width);if(x)push(x-1,z);if(x+1<width)push(x+1,z);if(z)push(x,z-1);if(z+1<height)push(x,z+1);
-          if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}}
-        for(let z=0;z<height;z++)for(let x=0;x<width;x++)if(!visited[z*width+x]&&!points.has(`${x+minX}:${z+minZ}`)){
-          const p=this.grid.node(x+minX,z+minZ);if((p>>>16)>0&&(p&65535)<=32767)cells.push([x+minX,z+minZ,p]);
-        }
-      }
       if(!active())return null;
       const cx=Math.round((minX+maxX)/2),cz=Math.round((minZ+maxZ)/2),local=new Grid();
       for(const [x,z,p]of cells){const lx=x-cx,lz=z-cz,tx=Math.floor(lx/SIZE),tz=Math.floor(lz/SIZE),key=`${tx}:${tz}`;

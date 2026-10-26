@@ -106,3 +106,18 @@ test('paint selection is invalidated by edits and cancelled selection leaves the
  model.rename('Renamed');assert.throws(()=>model.transformPaint(128,0),/Select the painted island again/);
  await model.selectPaint(0,0);assert.throws(()=>model.transformPaint(30000000,0),/world bounds/);assert.deepEqual(model.preset().painted_map,before.painted_map);
 });
+
+test('moving a donut moves its ocean cutout and every fractional coast sample',async()=>{
+ const m=new Model(blank(),'2');
+ for(const [tool,radius,x,z] of [['land',160,0,0],['ocean',64,24,12]]){m.begin({tool,radius,roughness:.25});await m.point(x,z);m.end();}
+ await stroke(m,'land',[[800,800]]);await stroke(m,'ocean',[[-700,-700]]);
+ const before=m.grid.toJSON(),snapshot=[];
+ for(let z=-200;z<=200;z+=4)for(let x=-200;x<=200;x+=4)snapshot.push([x,z,m.grid.apply(0,x,z)]);
+ await m.selectPaint(-80,0);m.transformPaint(512,0);
+ for(const [x,z,v]of snapshot){assert.equal(m.grid.apply(0,x,z),0,`residual at ${x},${z}`);assert.equal(m.grid.apply(0,x+512,z),v,`moved mask at ${x},${z}`);}
+ assert.equal(m.grid.apply(0,800,800),1);assert.ok(m.grid.node(-175,-175)>>>16);
+ const sorted=grid=>({...grid,tiles:grid.tiles.slice().sort((a,b)=>a.x-b.x||a.z-b.z)});
+ m.history();assert.deepEqual(sorted(m.grid.toJSON()),sorted(before));m.history(true);
+ await m.selectPaint(432,0);m.transformPaint(0,0,true);
+ for(const [x,z]of snapshot)assert.equal(m.grid.apply(0,x+512,z),0);
+});
