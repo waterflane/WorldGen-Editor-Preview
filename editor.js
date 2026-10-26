@@ -167,7 +167,7 @@
   function frameAll(){
     if(!active){view={...WgePreview.snapshot().view};switchMode(true);}
     let bounds=paintedBounds?{...paintedBounds}:null;
-    for(const entry of currentBase?.entries||[]){const g=entryGeometry(entry),r=Math.max(g.rx,g.rz)*1.4;
+    for(const entry of currentBase?.entries||[]){const g=entryGeometry(entry),r=Math.max(g.rx,g.rz)*1.4+(entry.coast?entry.coast.shallow_ocean_width_blocks+64:0);
       if(!bounds)bounds={minX:g.x-r,maxX:g.x+r,minZ:g.z-r,maxZ:g.z+r};
       else{bounds.minX=Math.min(bounds.minX,g.x-r);bounds.maxX=Math.max(bounds.maxX,g.x+r);bounds.minZ=Math.min(bounds.minZ,g.z-r);bounds.maxZ=Math.max(bounds.maxZ,g.z+r);}}
     if(bounds){const r=canvas.getBoundingClientRect();view={x:(bounds.minX+bounds.maxX)/2,z:(bounds.minZ+bounds.maxZ)/2,blocksPerPixel:Math.max(1,Math.min(96,Math.max((bounds.maxX-bounds.minX)/Math.max(1,r.width-60),(bounds.maxZ-bounds.minZ)/Math.max(1,r.height-60))))};}
@@ -185,7 +185,7 @@
       const text=document.createElement('span');text.className='object-text';const name=document.createElement('strong');name.textContent=entry.name||`Island ${index+1}`;
       const meta=document.createElement('small'),g=entryGeometry(entry);meta.textContent=`${Math.round(g.x)}, ${Math.round(g.z)} · ${entry.outline?'outline island':entry.type||'island'}`;text.append(name,meta);
       const kind=document.createElement('span');kind.className='object-type';kind.textContent=entry.outline?'OUTLINE':entry.type==='archipelago'?'GROUP':'SHAPE';button.append(symbol,text,kind);
-      button.addEventListener('click',()=>{chooseTool('select');selectObject(index);});button.addEventListener('dblclick',()=>{const g=entryGeometry(entry);view={x:g.x,z:g.z,blocksPerPixel:Math.max(1,Math.min(96,Math.max(g.rx,g.rz)*3/Math.max(1,Math.min(canvas.clientWidth,canvas.clientHeight))))};renderBase();draw();});list.append(button);
+      button.addEventListener('click',()=>{chooseTool('select');selectObject(index);});button.addEventListener('dblclick',()=>{const g=entryGeometry(entry);view={x:g.x,z:g.z,blocksPerPixel:Math.max(1,Math.min(96,(Math.max(g.rx,g.rz)*3+2*(entry.coast?.shallow_ocean_width_blocks||0))/Math.max(1,Math.min(canvas.clientWidth,canvas.clientHeight))))};renderBase();draw();});list.append(button);
     }
   }
   function fillInspector(){
@@ -209,6 +209,9 @@
     $('shapeOverlap').checked=!!entry.overlap;let temperature=(entry.temperature??entry.climate??'standard').toLowerCase();
     $('shapeTemperature').value=({normal:'temperate',hot:'warm'})[temperature]||(['cold','warm','temperate'].includes(temperature)?temperature:'standard');
     $('archipelagoProperties').hidden=entry.type!=='archipelago';
+    $('customCoastProperties').hidden=entry.type==='ocean';$('customCoast').checked=!!entry.coast;
+    $('beachWidth').value=$('beachWidthSlider').value=entry.coast?.beach_width_blocks??16;
+    $('oceanWidth').value=$('oceanWidthSlider').value=entry.coast?.shallow_ocean_width_blocks??128;updateCoastControls();
   }
   function world(event){const r=canvas.getBoundingClientRect();return {x:Math.max(-29999984,Math.min(29999984,view.x+(event.clientX-r.left-r.width/2)*view.blocksPerPixel)),z:Math.max(-29999984,Math.min(29999984,view.z+(event.clientY-r.top-r.height/2)*view.blocksPerPixel))};}
   function showCursor(event){
@@ -287,6 +290,15 @@
     if(!paintSelection||gesture||pendingLoad||converting)return;
     converting=true;$('convertPaintButton').disabled=true;tell('Converting coastline to island…');send('paint-convert');
   });
+  function updateCoastControls(){
+    const enabled=$('customCoast').checked;$('coastWidths').hidden=!enabled;
+    for(const id of ['beachWidth','beachWidthSlider','oceanWidth','oceanWidthSlider'])$(id).disabled=!enabled;
+  }
+  $('customCoast').addEventListener('change',updateCoastControls);
+  for(const [field,slider]of [['beachWidth','beachWidthSlider'],['oceanWidth','oceanWidthSlider']]){
+    $(slider).addEventListener('input',()=>{$(field).value=$(slider).value;});
+    $(field).addEventListener('input',()=>{$(slider).value=$(field).value;});
+  }
   $('shapeForm').addEventListener('submit',event=>{
     event.preventDefault();if(selected<0||pendingLoad)return;finishGesture();
     const number=id=>Number($(id).value),entry=currentBase.entries[selected];
@@ -295,10 +307,11 @@
       noise:{seed:$('shapeNoiseSeed').value,scale:number('shapeNoiseScale'),first_octave:number('shapeOctave'),amplitudes:$('shapeAmplitudes').value.split(',').map(value=>value.trim()?Number(value):NaN)}};
     if(entry.type==='archipelago')Object.assign(patch,{count:number('shapeCount'),spread:number('shapeSpread'),spacing:number('shapeSpacing'),min_radius:number('shapeMinRadius'),max_radius:number('shapeMaxRadius')});
     if(entry.outline){for(const key of ['noise','shape_power','roughness','shore_width','multiplier'])delete patch[key];patch.overlap=false;}
+    patch.coast=entry.type!=='ocean'&&$('customCoast').checked?{beach_width_blocks:number('beachWidth'),shallow_ocean_width_blocks:number('oceanWidth')}:null;
     chooseTool('select');send('entry-change',{index:selected,patch});
   });
   $('sourceButton').addEventListener('click',()=>{
-    if(!loaded||pendingLoad)return;finishGesture();const config={...currentBase,generation_version:3};delete config.painted_map;
+    if(!loaded||pendingLoad)return;finishGesture();const config={...currentBase};delete config.painted_map;
     $('workspaceJsonInput').value=JSON.stringify(config,null,2);$('sourceError').textContent='';$('sourceDialog').showModal();
   });
   $('closeSourceButton').addEventListener('click',()=>$('sourceDialog').close());
