@@ -472,7 +472,8 @@ function updateRenderLabels(exact, engine, interactive) {
   const quality = mapSource.value === "biomes" ? "biomes" : "exact mask";
   const sampling=lastBiomeMap ? ` | sample ${lastBiomeMap.sampleStep} blocks${lastBiomeMap.targetStep && lastBiomeMap.targetStep!==lastBiomeMap.sampleStep ? ` → ${lastBiomeMap.targetStep}` : ""}` : "";
   const timing=firstFrameElapsedMs===null ? "" : ` (first ${firstFrameElapsedMs} ms)`;
-  statsLabel.textContent = `${structures} structures${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${timing}${sampling}`;
+  const mapLabel=appliedPaintText?`Painted map${structures?` / ${structures} shapes`:''}`:`${structures} shapes`;
+  statsLabel.textContent = `${mapLabel}${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${timing}${sampling}`;
 }
 
 function drawOverlays(width, height) {

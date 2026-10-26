@@ -1,137 +1,103 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WorldGen Editor Preview</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WorldGen Editor — Map Workspace</title><link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <svg class="icon-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-select" viewBox="0 0 24 24"><path d="m5 3 14 9-7 1-3 7Z"/></symbol>
+    <symbol id="i-land" viewBox="0 0 24 24"><path d="m3 18 6-11 4 7 3-4 5 8Z"/><path d="m7 11 2 2 2-2"/></symbol>
+    <symbol id="i-ocean" viewBox="0 0 24 24"><path d="M3 8q3-4 6 0t6 0 6 0M3 13q3-4 6 0t6 0 6 0M3 18q3-4 6 0t6 0 6 0"/></symbol>
+    <symbol id="i-pan" viewBox="0 0 24 24"><path d="M8 12V6a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v8c0 5-3 7-7 7-3 0-5-2-7-5l-3-4q-1-3 2-2l3 2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12q10-14 20 0-10 14-20 0Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6"/><rect x="8" y="8" width="8" height="8" rx="1"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="m8 4-5 5 5 5M3 9h10q8 0 8 6t-8 6"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="m16 4 5 5-5 5m5-5H11q-8 0-8 6t8 6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V4h7l3 3h8v13H3Z"/><path d="M3 10h18"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M3 3h15l3 3v15H3Z"/><path d="M7 3v6h10V3M7 21v-8h10v8"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7Z"/></symbol>
+  </defs></svg>
   <main class="app">
-    <aside class="panel">
-      <header class="brand">
-        <div>
-          <p class="eyebrow">WorldGen Editor</p>
-          <h1>Island Preview</h1>
-        </div>
-        <span id="stateBadge" class="badge">ready</span>
-      </header>
-
-      <nav class="toolbar" aria-label="Map workspace">
-        <button id="previewTab" type="button" aria-pressed="true">Preview</button>
-        <button id="editorTab" type="button" aria-pressed="false">Map Editor</button>
-      </nav>
-
-      <div id="editorControls" class="control-group" hidden>
-        <h2>Custom map · land and ocean</h2>
-        <div class="toolbar"><button id="newMapButton" type="button">New Ocean</button><button id="importPreviewButton" type="button">Use Preview Preset</button></div>
-        <div class="toolbar"><label for="projectInput" class="file-button">Open Project / JSON</label><input id="projectInput" type="file" accept=".json,application/json"><button id="restoreDraftButton" type="button" disabled>Restore Draft</button></div>
-        <label>Map name<input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label>
-        <label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label>
-        <label>Coastal ocean temperature<select id="oceanTemperature"><option value="">Default</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label>
-        <p class="editor-help">Default uses explicit island temperatures, otherwise Ocean / Deep Ocean. This setting overrides island ocean temperatures only. The external ocean is set separately by outer_ocean in JSON.</p>
-        <div class="toolbar" role="group" aria-label="Brushes"><button id="landBrush" type="button" aria-pressed="true">Land</button><button id="oceanBrush" type="button" aria-pressed="false">Ocean</button></div>
-        <label><span>Brush radius: <output id="brushRadiusValue">128</output> blocks</span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
-        <label><span>Shore roughness: <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>
-        <div class="toolbar"><button id="undoBrush" type="button" disabled>Undo</button><button id="redoBrush" type="button" disabled>Redo</button></div>
-        <button id="applyEditorButton" type="button">Apply to Exact Preview</button>
-        <div class="toolbar"><button id="saveProjectButton" type="button">Save Project</button><button id="exportPresetButton" type="button">Export Preset</button></div>
-        <p id="editorStatus" role="status">Open the editor to get started.</p>
-        <p class="editor-help">Left drag to paint. Middle drag or Space + drag to pan. Scroll to zoom. Ctrl+Z / Ctrl+Shift+Z to undo / redo.</p>
-        <p class="editor-help">This view shows the quick mask. Exact biomes and base terrain update only after applying. Accuracy profile: Minecraft + WGE.</p>
-        <p class="editor-help">Add an exported preset or editor project to Minecraft's config/worldgen_editor/presets folder. Select its map name in World Type; no file renaming is required.</p>
+    <header class="topbar">
+      <a class="wordmark" href="#" aria-label="WorldGen Editor"><span class="brand-mark">W</span>WorldGen <strong>Editor</strong><span class="version">0.4.0</span></a>
+      <div class="project-actions">
+        <button id="newMapButton" title="Create a new ocean canvas">New</button>
+        <label for="projectInput" class="file-button"><svg><use href="#i-folder"/></svg>Open<span class="optional-text"> project / JSON</span></label><input id="projectInput" type="file" accept=".json,application/json">
+        <button id="saveProjectButton"><svg><use href="#i-save"/></svg>Save project</button>
+        <button id="exportPresetButton">Export<span class="optional-text"> Minecraft preset</span><span aria-hidden="true">↗</span></button>
       </div>
-
-      <div id="previewControls" class="control-group">
-
-      <section class="control-group">
-        <div class="row">
-          <label for="fileInput" class="file-button">Open JSON</label>
-          <input id="fileInput" type="file" accept=".json,application/json">
-          <button id="loadDefaultButton" type="button">Default</button>
-          <button id="downloadButton" type="button">Download</button>
-        </div>
-        <label>
-          World seed
-          <input id="seedInput" type="text" value="0" spellcheck="false">
-        </label>
-      </section>
-
-      <section class="control-group">
-        <div class="toolbar">
-          <button id="applyButton" type="button">Apply JSON</button>
-          <button id="fitButton" type="button">Fit</button>
-          <button id="resetButton" type="button">Reset View</button>
-        </div>
-        <textarea id="jsonInput" spellcheck="false"></textarea>
-        <p id="paintedLayerNotice" class="editor-help" hidden>A painted map is attached. Edit its settings here; Download saves the full applied preset.</p>
-        <button id="clearPaintButton" type="button" hidden>Remove Painted Layer</button>
-      </section>
-
-      <section class="control-group compact">
-        <label>Map <select id="mapSource"><option value="mask">Island mask (offline)</option><option value="biomes">Minecraft biomes (Java)</option></select></label>
-        <label>Height <select id="heightMode"><option value="surface">Base surface</option><option value="300">Y = 300</option><option value="64">Y = 64</option><option value="0">Y = 0</option><option value="-32">Y = -32</option></select></label>
-        <label class="toggle"><input id="reliefToggle" type="checkbox"> Base relief shading (surface mode)</label>
-      </section>
-      <section class="control-group compact">
-        <div class="display-options">
-          <div class="toggle-options">
-          <label class="toggle">
-            <input id="gridToggle" type="checkbox" checked>
-            Grid
-          </label>
-          <label class="toggle">
-            <input id="labelsToggle" type="checkbox" checked>
-            Labels
-          </label>
-          <label class="toggle">
-            <input id="thresholdToggle" type="checkbox" checked>
-            Shores
-          </label>
-          <label class="toggle">
-            <input id="childLabelsToggle" type="checkbox">
-            Child labels
-          </label>
-          </div>
-          <label class="quality-control">
-            Quality
-            <select id="qualitySelect">
-              <option value="0.45">Fast</option>
-              <option value="0.65" selected>Balanced</option>
-              <option value="1">Full exact</option>
-            </select>
-          </label>
-        </div>
-      </section>
-
-      <section class="control-group compact">
-        <h2>Islands</h2>
-        <div id="islandList" class="island-list"></div>
-      </section>
-      </div>
+      <span class="review-tag">Interface preview</span>
+    </header>
+    <div class="contextbar">
+      <div class="document-breadcrumb"><span class="document-dot"></span><strong id="documentTitle">Untitled Map</strong><span id="documentState">Draft</span></div>
+      <div class="context-actions"><button id="undoBrush" class="icon-button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg><use href="#i-undo"/></svg></button><button id="redoBrush" class="icon-button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg><use href="#i-redo"/></svg></button><span class="separator"></span><button id="frameMapButton" title="Frame all objects (Home)"><svg><use href="#i-fit"/></svg>Frame all</button><button id="sourceButton" title="Edit advanced JSON parameters">{ }<span class="optional-text"> Source</span></button><button id="applyEditorButton" class="primary"><svg><use href="#i-play"/></svg>Update biomes</button></div>
+    </div>
+    <nav class="tool-rail" aria-label="Map tools">
+      <button id="selectTool" class="tool" aria-label="Select and move objects" aria-pressed="true" title="Select / Move (V)"><svg><use href="#i-select"/></svg><kbd>V</kbd></button>
+      <span class="rail-divider"></span>
+      <button id="landBrush" class="tool" aria-label="Paint land" aria-pressed="false" title="Paint land (B)"><svg><use href="#i-land"/></svg><kbd>B</kbd></button>
+      <button id="oceanBrush" class="tool" aria-label="Paint ocean" aria-pressed="false" title="Paint ocean (E)"><svg><use href="#i-ocean"/></svg><kbd>E</kbd></button>
+      <span class="rail-divider"></span>
+      <button id="panTool" class="tool" aria-label="Pan map" aria-pressed="false" title="Pan (H) · Hold Space"><svg><use href="#i-pan"/></svg><kbd>H</kbd></button>
+      <button id="inspectModeButton" class="tool" aria-label="Update and inspect biomes" aria-pressed="false" title="Update and inspect biomes (I)"><svg><use href="#i-eye"/></svg><kbd>I</kbd></button>
+      <span class="rail-foot">XZ</span>
+    </nav>
+    <aside id="editorControls" class="scene-panel">
+      <div class="panel-heading"><h2>Scene collection</h2><span id="objectCount" class="count">0</span></div>
+      <div class="add-object"><select id="addObjectType" aria-label="New object type"><option value="island">Island</option><option value="archipelago">Archipelago</option><option value="ocean">Ocean cutout</option></select><button id="addObjectButton" title="Add object" aria-label="Add object">＋</button></div>
+      <div id="sceneObjects" class="scene-objects" aria-label="Map objects"></div>
+      <button id="paintLayerButton" class="paint-layer" title="The imported painted mask is one layer in this interface preview"><svg><use href="#i-land"/></svg><span>Painted coastline<small id="paintTileCount">Empty layer</small></span><span class="layer-mark">MASK</span></button>
+      <div class="scene-foot"><span class="eyebrow">Non-destructive workflow</span><p>Procedural objects form the base. Your painted coastline stays on top.</p><button id="restoreDraftButton" disabled>Restore local draft</button></div>
+      <details class="help-box"><summary>Shortcuts</summary><p>V Select · B Land · E Ocean · H Pan · I Inspect</p><p>Space + drag or middle drag to pan. Scroll to zoom. Home to frame all.</p><p>Ctrl+Z Undo · Ctrl+Shift+Z Redo<br>Ctrl+D Duplicate · Delete Remove<br>Arrow keys move · Shift for larger steps</p></details>
     </aside>
-
-    <section class="stage">
-      <canvas id="previewCanvas"></canvas>
-      <canvas id="editorCanvas" hidden aria-label="Island painting map"></canvas>
-      <div id="brushCursor" hidden></div>
-      <div id="editorHud" class="hud" hidden></div>
-      <div id="previewHud" class="hud">
-        <span id="coords">x 0, z 0</span>
-        <span id="zoomLabel">1 px = 8 blocks</span><span>Minecraft + WGE</span>
-        <span id="statsLabel">0 islands</span>
+    <section class="viewport">
+      <header class="viewport-bar"><span class="viewport-title"><svg><use href="#i-land"/></svg><strong id="viewModeLabel">Map canvas</strong><span class="view-tag">Top / XZ</span></span><details class="viewport-options"><summary>Viewport settings<span>⌄</span></summary><div class="popover-content" id="previewControls">
+        <label>Inspection layer<select id="mapSource"><option value="mask">Island mask</option><option value="biomes">Minecraft biomes (Java)</option></select></label>
+        <label>Height slice<select id="heightMode"><option value="surface">Base surface</option><option value="300">Y = 300</option><option value="64">Y = 64</option><option value="0">Y = 0</option><option value="-32">Y = -32</option></select></label>
+        <label>Preview quality<select id="qualitySelect"><option value="0.45">Fast</option><option value="0.65" selected>Balanced</option><option value="1">Full exact</option></select></label>
+        <label class="toggle"><input id="reliefToggle" type="checkbox">Base relief shading</label><label class="toggle"><input id="gridToggle" type="checkbox" checked>Grid</label><label class="toggle"><input id="labelsToggle" type="checkbox">Object labels in inspection</label><label class="toggle"><input id="thresholdToggle" type="checkbox" checked>Shore overlay</label><label class="toggle"><input id="childLabelsToggle" type="checkbox">Archipelago child labels</label>
+        <p class="hint">Exact accuracy: Minecraft + WGE. Update biomes after editing.</p>
+      </div></details></header>
+      <div class="stage"><canvas id="previewCanvas" hidden></canvas><canvas id="editorCanvas" aria-label="Island map canvas"></canvas><div id="brushCursor" hidden></div>
+        <div id="editorHud" class="hud"></div><div id="previewHud" class="hud" hidden><span id="coords">x 0, z 0</span><span id="zoomLabel">1 px = 8 blocks</span><span id="statsLabel">Awaiting map data</span></div>
+        <div class="axis-gizmo" aria-hidden="true"><span>Z</span><i></i><b>X</b></div><div class="canvas-note" id="canvasHint">Select an object to move it · Scroll to zoom</div><div id="biomeTooltip" class="biome-tooltip" role="tooltip" hidden></div>
       </div>
-      <div id="biomeTooltip" class="biome-tooltip" role="tooltip" hidden></div>
     </section>
+    <aside class="inspector">
+      <div class="panel-heading"><h2>Properties</h2><span id="selectionKind" class="count">OBJECT</span></div>
+      <section id="brushProperties" class="property-section" hidden><div class="section-title"><h3>Brush settings</h3><span id="brushKindLabel">LAND</span></div>
+        <label><span>Radius <output id="brushRadiusValue">128</output><small>blocks</small></span><input id="brushRadius" type="range" min="8" max="2048" step="8" value="128"></label>
+        <label><span>Shore roughness <output id="brushRoughnessValue">25%</output></span><input id="brushRoughness" type="range" min="0" max="100" value="25"></label>
+        <p class="hint">Paint on the coastline layer. Each stroke is one undo step; roughness is saved into the mask.</p>
+      </section>
+      <section id="paintProperties" class="property-section" hidden><div class="section-title"><h3>Painted island</h3><span>CONNECTED MASK</span></div><p class="hint">This connected painted region can be selected and moved. Touching strokes form one island; the file still uses the compatible painted mask.</p><div class="field-pair"><label>Center X<input id="paintCenterX" type="number" readonly></label><label>Center Z<input id="paintCenterZ" type="number" readonly></label></div><div class="field-pair"><label>Width<input id="paintWidth" type="number" readonly></label><label>Depth<input id="paintDepth" type="number" readonly></label></div><p class="hint">Drag to move · Arrow keys nudge · Ctrl+Z to undo. Moves snap to the 4-block paint grid.</p><button id="deletePaintButton" class="danger">Remove painted island</button></section>
+      <div id="objectProperties" hidden>
+        <form id="shapeForm">
+          <section class="property-section"><div class="section-title"><h3 id="objectHeading">Island</h3><span>PARAMETRIC</span></div><label>Name<input id="shapeName" type="text" required maxlength="120"></label>
+            <div class="field-pair"><label>Position X<input id="shapeX" type="number" step="1" required></label><label>Position Z<input id="shapeZ" type="number" step="1" required></label></div>
+            <div class="field-pair"><label>Radius X <small>blocks</small><input id="shapeRadiusX" type="number" min="0.001" step="any" required></label><label>Radius Z <small>blocks</small><input id="shapeRadiusZ" type="number" min="0.001" step="any" required></label></div>
+            <div class="field-pair"><label>Stretch X<input id="shapeStretchX" type="number" min="0.001" step="any" required></label><label>Stretch Z<input id="shapeStretchZ" type="number" min="0.001" step="any" required></label></div>
+            <label>Rotation <small>degrees</small><input id="shapeRotation" type="number" step="any" required></label>
+          </section>
+          <section class="property-section"><div class="section-title"><h3>Shape & coast</h3></div>
+            <div class="field-pair"><label>Shape power<input id="shapePower" type="number" min="0.75" max="8" step="0.05" required></label><label>Size multiplier<input id="shapeMultiplier" type="number" min="0.001" max="100" step="any" required></label></div>
+            <div class="field-pair"><label>Roughness<input id="shapeRoughness" type="number" min="0" max="1" step="0.01" required></label><label>Shore width<input id="shapeShore" type="number" min="0.001" max="10" step="any" required></label></div>
+            <p class="hint">Shape power 2 is an ellipse. Lower values sharpen the outline; higher values square it off.</p><label class="toggle"><input id="shapeOverlap" type="checkbox">Add overlapping land masks</label>
+          </section>
+          <section class="property-section"><div class="section-title"><h3>Island climate</h3></div><label>Temperature<select id="shapeTemperature"><option value="standard">Natural (Minecraft climate)</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label><label>Biome patch size <small>blocks</small><input id="shapePatch" type="number" min="4" max="4096" step="1" required></label><p class="hint">Surface climate for this object. Natural coasts use normal ocean unless a coastal override is set.</p></section>
+          <details class="property-section" id="archipelagoProperties" hidden open><summary>Archipelago distribution</summary><div class="field-pair"><label>Island count<input id="shapeCount" type="number" min="1" max="4096" step="1"></label><label>Spread<input id="shapeSpread" type="number" min="0.05" max="1" step="0.01"></label><label>Min. radius<input id="shapeMinRadius" type="number" min="0.001" step="any"></label><label>Max. radius<input id="shapeMaxRadius" type="number" min="0.001" step="any"></label><label>Spacing<input id="shapeSpacing" type="number" min="0.001" max="1000" step="any"></label></div></details>
+          <details class="property-section"><summary>Advanced noise</summary><label>Shape seed<input id="shapeNoiseSeed" type="text"></label><div class="field-pair"><label>Noise scale<input id="shapeNoiseScale" type="number" min="0.001" max="1024" step="any" required></label><label>First octave<input id="shapeOctave" type="number" min="-20" max="12" step="1" required></label></div><label>Amplitudes<input id="shapeAmplitudes" type="text" placeholder="1, 0.78, 0.55, 0.34"></label><p class="hint">Advanced values are validated before replacing the current shape.</p></details>
+          <div class="property-section object-actions"><button type="submit" class="primary">Apply object changes</button><div class="field-pair"><button id="duplicateObjectButton" type="button">Duplicate</button><button id="deleteObjectButton" type="button" class="danger">Remove</button></div></div>
+        </form>
+      </div>
+      <section id="noSelection" class="property-section"><span class="empty-icon">◇</span><h3>Your map, your coastline</h3><p class="hint">Select an object in the scene or on the canvas to edit its shape. Use the land and ocean brushes for freehand coastlines.</p></section>
+      <details class="property-section" open><summary>Map settings</summary><label>Map name<input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label><label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label><label>Coastal ocean temperature<select id="oceanTemperature"><option value="">Default (from islands)</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label><p class="hint">A map-wide ocean override. External ocean is set by outer_ocean in JSON.</p></details>
+    </aside>
+    <footer class="statusbar"><p id="editorStatus" role="status">Loading workspace…</p><span class="status-right"><span class="status-light"></span><span id="stateBadge">ready</span><span class="optional-text">Minecraft 1.21.1 · NeoForge</span></span></footer>
+    <dialog id="sourceDialog"><header class="dialog-header"><div><h2>Advanced source</h2><p>Generation parameters only. The painted coastline is preserved.</p></div><button id="closeSourceButton" aria-label="Close source editor">×</button></header><textarea id="workspaceJsonInput" spellcheck="false" aria-label="Map configuration JSON"></textarea><p id="sourceError" class="hint" role="status"></p><footer><button id="applySourceButton" class="primary">Apply parameters</button></footer></dialog>
+    <div hidden aria-hidden="true"><button id="applyButton"></button><button id="loadDefaultButton"></button><button id="downloadButton"></button><button id="fitButton"></button><button id="resetButton"></button><button id="clearPaintButton"></button><button id="importPreviewButton"></button><input id="fileInput" type="file"><input id="seedInput"><textarea id="jsonInput"></textarea><span id="paintedLayerNotice"></span><div id="islandList"></div></div>
   </main>
-
-  <script src="painted-map.js"></script>
-  <script src="mask-core.js"></script>
-  <script src="biome-colors.js"></script>
-  <script src="render-core.js"></script>
-  <script src="tile-cache.js"></script>
-  <script src="document-format.js"></script>
-  <script src="app.js"></script>
-  <script src="editor.js"></script>
+  <script src="painted-map.js"></script><script src="mask-core.js"></script><script src="biome-colors.js"></script><script src="render-core.js"></script><script src="tile-cache.js"></script><script src="document-format.js"></script><script src="workspace-geometry.js"></script><script src="app.js"></script><script src="editor.js"></script>
 </body>
 </html>
