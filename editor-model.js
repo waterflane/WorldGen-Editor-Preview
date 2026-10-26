@@ -40,15 +40,99 @@
     }
     rename(name){
       if(typeof name!=='string'||!name.trim()||name.trim().length>120||/[\u0000-\u001f\u007f-\u009f]/.test(name))throw new Error('Map name must contain 1–120 characters without control characters');
-      if(name.trim()!==this.config.name){this.config={...this.config,name:name.trim()};this.revision++;}
+      if(name.trim()!==this.config.name)this.configure({...this.config,name:name.trim()});
     }
     oceanTemperature(value){
       if(this.stroke)throw new Error('Finish the stroke before changing ocean temperature');
       if(!['','temperate','cold','warm'].includes(value))throw new Error('Invalid coastal ocean temperature');
       if((this.config.ocean_temperature??'')===value)return;
-      this.config={...this.config};
-      if(value)this.config.ocean_temperature=value;else delete this.config.ocean_temperature;
-      this.revision++;
+      const next={...this.config};
+      if(value)next.ocean_temperature=value;else delete next.ocean_temperature;
+      this.configure(next);
+    }
+    remember(item){
+      this.redoStack=[];this.undoStack.push(item);
+      this.historyBytes=this.undoStack.reduce((n,h)=>n+h.bytes,0);
+      while(this.undoStack.length>100||this.historyBytes>MAX_BYTES){this.historyBytes-=this.undoStack.shift().bytes;}
+    }
+    configure(config,seed=this.seed){
+      if(this.stroke)throw new Error('Finish the current stroke first');
+      const next={...config};delete next.painted_map;
+      const parsed=validate(next,seed),before={config:this.config,seed:this.seed};
+      // Keep sparse paint and its undo history out of parameter edits.
+      const after={config:{...parsed.config,painted_map:this.config.painted_map},seed:parsed.seed};
+      const withoutPaint=value=>{const copy={...value.config};delete copy.painted_map;return {config:copy,seed:value.seed};};
+      const a=JSON.stringify(withoutPaint(before)),b=JSON.stringify(withoutPaint(after));if(a===b)return;
+      const bytes=new TextEncoder().encode(a+b).length;if(bytes>MAX_BYTES)throw new Error('Parameter change exceeds the undo memory limit');
+      this.config=after.config;this.seed=after.seed;this.remember({kind:'document',before,after,bytes});this.revision++;
+    }
+    changeEntry(index,patch){
+      if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
+      const entries=this.config.entries.slice();entries[index]={...entries[index],...patch};
+      if(patch.noise)entries[index].noise={...this.config.entries[index].noise,...patch.noise};
+      // A changed canonical radius must not be shadowed by a legacy alias.
+      for(const [key,alias] of [['x','center_x'],['z','center_z'],['radius_x','x_divisor'],['radius_z','z_divisor'],['rotation','rotation_degrees'],['roughness','noise_strength'],['shore_width','edge_width']])if(Object.hasOwn(patch,key))delete entries[index][alias];
+      this.configure({...this.config,entries});
+    }
+    addEntry(type,x=0,z=0){
+      if(!['island','ocean','archipelago'].includes(type))throw new Error('Invalid object type');
+      const entry={name:type==='archipelago'?'Archipelago':type==='ocean'?'Ocean Cutout':'Island',type,x,z,radius:type==='archipelago'?1000:300,temperature:'standard'};
+      this.configure({...this.config,entries:[...this.config.entries,entry]});return this.config.entries.length-1;
+    }
+    removeEntry(index){
+      if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
+      this.configure({...this.config,entries:this.config.entries.filter((_,i)=>i!==index)});
+    }
+    duplicateEntry(index){
+      if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
+      const entry=structuredClone(this.config.entries[index]);entry.name=(entry.name||'Island')+' Copy';entry.x=(entry.x??entry.center_x)+64;entry.z=(entry.z??entry.center_z)+64;
+      this.configure({...this.config,entries:[...this.config.entries,entry]});return this.config.entries.length-1;
+    }
+    async selectPaint(x,z,active=()=>true){
+      const start=[Math.round(x/STEP),Math.round(z/STEP)];
+      const land=p=>(p>>>16)>0&&(p&65535)>32767;
+      if(!land(this.grid.node(...start))){this.paintSelection=null;return null;}
+      const visited=new Map(),queue=[start],cells=[];let head=0,budget=performance.now(),minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+      while(head<queue.length){
+        const [gx,gz]=queue[head++],tx=Math.floor(gx/SIZE),tz=Math.floor(gz/SIZE),key=`${tx}:${tz}`,index=(gz-tz*SIZE)*SIZE+gx-tx*SIZE;
+        let marks=visited.get(key);if(!marks){marks=new Uint8Array(SIZE*SIZE);visited.set(key,marks);}if(marks[index])continue;marks[index]=1;
+        const value=this.grid.node(gx,gz);if(!land(value))continue;
+        cells.push([gx,gz,value]);if(cells.length>262144)throw new Error('Painted selection exceeds 262144 samples; use a smaller connected island');
+        minX=Math.min(minX,gx);minZ=Math.min(minZ,gz);maxX=Math.max(maxX,gx);maxZ=Math.max(maxZ,gz);
+        queue.push([gx-1,gz],[gx+1,gz],[gx,gz-1],[gx,gz+1]);
+        if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}
+      }
+      const bounds={minX:minX*STEP-STEP,minZ:minZ*STEP-STEP,maxX:maxX*STEP+STEP,maxZ:maxZ*STEP+STEP};
+      const summary={bounds,x:(bounds.minX+bounds.maxX)/2,z:(bounds.minZ+bounds.maxZ)/2,anchorX:start[0]*STEP,anchorZ:start[1]*STEP,samples:cells.length,revision:this.revision};
+      this.paintSelection={cells,summary};return summary;
+    }
+    transformPaint(dx,dz,remove=false){
+      if(this.stroke||!this.paintSelection||this.paintSelection.summary.revision!==this.revision)throw new Error('Select the painted island again before moving it');
+      const sx=Math.round(dx/STEP),sz=Math.round(dz/STEP);if(!remove&&!sx&&!sz)return [];
+      const {cells}=this.paintSelection,before=new Map(),locations=new Map();
+      for(const [gx,gz]of cells)for(const [x,z]of remove?[[gx,gz]]:[[gx,gz],[gx+sx,gz+sz]]){
+        if(Math.abs(x*STEP)>BOUND||Math.abs(z*STEP)>BOUND)throw new Error('Painted island would leave world bounds');
+        const key=`${Math.floor(x/SIZE)}:${Math.floor(z/SIZE)}`;locations.set(key,true);
+      }
+      if(locations.size*SIZE*SIZE*8>MAX_BYTES)throw new Error('Move exceeds the undo memory limit');
+      const newTiles=[...locations.keys()].filter(key=>!this.grid.tiles.has(key)).length;
+      if(this.grid.tiles.size+newTiles>MAX_TILES)throw new Error('Painted map tile limit reached');
+      for(const key of locations.keys()){before.set(key,this.grid.tiles.get(key)?.slice()??null);if(!this.grid.tiles.has(key))this.grid.tiles.set(key,new Uint32Array(SIZE*SIZE));}
+      const put=(x,z,value)=>{const tx=Math.floor(x/SIZE),tz=Math.floor(z/SIZE);this.grid.tiles.get(`${tx}:${tz}`)[(z-tz*SIZE)*SIZE+x-tx*SIZE]=value;};
+      try{
+        for(const [gx,gz]of cells)put(gx,gz,0);
+        if(!remove)for(const [gx,gz,value]of cells){
+          const old=this.grid.node(gx+sx,gz+sz),a=(value>>>16)/65535,b=(old>>>16)/65535,coverage=a+b*(1-a);
+          const v=((value&65535)/65535*a+(old&65535)/65535*b*(1-a))/coverage;
+          put(gx+sx,gz+sz,((Math.round(coverage*65535)<<16)|Math.round(v*65535))>>>0);
+        }
+        const after=new Map();for(const key of before.keys()){
+          const tile=this.grid.tiles.get(key);if(!tile.some(p=>p>>>16))this.grid.tiles.delete(key);
+          after.set(key,this.grid.tiles.get(key)?.slice()??null);
+        }
+        this.remember({before,after,bytes:before.size*SIZE*SIZE*8});this.revision++;this.paintSelection=null;
+        return [...before.keys()];
+      }catch(error){this.restore(before);throw error;}
     }
     begin({radius=128,roughness=.25,tool='land'}){
       if(this.stroke)throw new Error('Finish the current stroke first');
@@ -90,9 +174,7 @@
       const {before}=this.stroke;this.stroke=null;if(!before.size)return false;
       const after=new Map([...before].map(([key])=>[key,this.grid.tiles.get(key)?.slice()??null]));
       const bytes=before.size*SIZE*SIZE*8;
-      this.redoStack=[];this.undoStack.push({before,after,bytes});
-      this.historyBytes=this.undoStack.reduce((n,h)=>n+h.bytes,0);
-      while(this.undoStack.length>100||this.historyBytes>MAX_BYTES){this.historyBytes-=this.undoStack.shift().bytes;}
+      this.remember({before,after,bytes});
       this.revision++;return true;
     }
     cancel(){if(!this.stroke)return [];const before=this.stroke.before;this.stroke=null;this.restore(before);return [...before.keys()];}
@@ -100,7 +182,10 @@
     history(redo=false){
       if(this.stroke)throw new Error('Finish the current stroke first');
       const from=redo?this.redoStack:this.undoStack,to=redo?this.undoStack:this.redoStack,item=from.pop();if(!item)return [];
-      this.restore(redo?item.after:item.before);to.push(item);this.revision++;return [...item.before.keys()];
+      to.push(item);this.revision++;
+      this.historyBytes=this.undoStack.reduce((n,h)=>n+h.bytes,0);
+      if(item.kind==='document'){Object.assign(this,redo?item.after:item.before);return [...this.grid.tiles.keys()];}
+      this.restore(redo?item.after:item.before);return [...item.before.keys()];
     }
     preset(){return {...this.config,generation_version:3,painted_map:this.grid.toJSON()};}
     project(view){return {format:'wge-map-project',version:1,name:this.config.name,seed:this.seed,config:this.preset(),editor:{...this.editor,view}};}

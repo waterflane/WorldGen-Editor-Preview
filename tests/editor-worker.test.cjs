@@ -50,7 +50,7 @@ test('ocean setting changes are serialized, exported for Apply and restored from
  const w=worker();try{
   w.send({type:'load',input:{entries:[]},seed:'2'});await w.next(m=>m.type==='state');
   w.send({type:'ocean-temperature',value:'cold'});
-  const state=await w.next(m=>m.type==='state'&&m.revision===1);assert.equal(state.oceanTemperature,'cold');assert.equal(state.canUndo,false);
+  const state=await w.next(m=>m.type==='state'&&m.revision===1);assert.equal(state.oceanTemperature,'cold');assert.equal(state.canUndo,true);
   w.send({type:'export',kind:'apply',id:20});
   assert.equal(JSON.parse((await w.next(m=>m.type==='export'&&m.id===20)).metadataText).ocean_temperature,'cold');
   w.send({type:'export',kind:'project',id:21,view:{x:0,z:0,blocksPerPixel:4}});
@@ -61,5 +61,19 @@ test('ocean setting changes are serialized, exported for Apply and restored from
   assert.equal((await w.next(m=>m.type==='export'&&m.id===22)).text,draft);
   w.send({type:'ocean-temperature',value:''});assert.equal((await w.next(m=>m.type==='state'&&m.revision===2)).oceanTemperature,'');
   w.send({type:'load',input:draft});assert.equal((await w.next(m=>m.type==='state'&&m.revision===0)).oceanTemperature,'cold');
+ }finally{await w.close();}
+});
+
+test('selecting and moving a painted island is serialized before exact-preview export',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{entries:[]},seed:'2'});await w.next(m=>m.type==='state');
+  w.send({type:'begin',brush:{tool:'land',radius:64,roughness:0}});w.send({type:'points',points:[{x:-257,z:-257}]});w.send({type:'end'});
+  // Export immediately after ending the stroke, without waiting for its state acknowledgement.
+  w.send({type:'export',kind:'apply',id:40});const applied=await w.next(m=>m.type==='export'&&m.id===40);
+  assert.ok(JSON.parse(applied.paintText).tiles.length);assert.equal(applied.revision,1);
+  w.send({type:'paint-pick',pick:1,x:-257,z:-257});const picked=await w.next(m=>m.type==='paint-picked');assert.ok(picked.selection.samples);
+  w.send({type:'paint-move',pick:1,dx:512,dz:256});const moved=await w.next(m=>m.type==='paint-picked');assert.equal(moved.selection.anchorX,picked.selection.anchorX+512);
+  w.send({type:'export',kind:'apply',id:41});const result=await w.next(m=>m.type==='export'&&m.id===41);
+  const {Grid}=require('../painted-map.js'),grid=new Grid(JSON.parse(result.paintText));assert.equal(grid.apply(0,255,-1),1);assert.equal(grid.apply(0,-257,-257),0);
  }finally{await w.close();}
 });

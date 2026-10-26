@@ -47,16 +47,62 @@ test('map name survives project and preset export independently of its filename'
  assert.equal(model.config.name,'Hidden Coast');
 });
 
-test('ocean temperature persists in projects and presets without changing paint or stroke history',async()=>{
+test('ocean temperature persists without changing paint and joins the shared undo history',async()=>{
  const model=new Model(blank(),'2');await stroke(model,'land',[[-257,-257],[16,16]]);
  const paint=model.grid.toJSON(),history=model.undoStack.length;
  for(const value of ['temperate','cold','warm','']){
   const revision=model.revision;model.oceanTemperature(value);assert.equal(model.revision,revision+1);
   assert.equal(model.config.ocean_temperature,value||undefined);
   assert.deepEqual(new Model(model.project({x:0,z:0,blocksPerPixel:4})).preset(),model.preset());
-  assert.deepEqual(model.grid.toJSON(),paint);assert.equal(model.undoStack.length,history);
+  assert.deepEqual(model.grid.toJSON(),paint);assert.equal(model.undoStack.filter(item=>item.kind!=='document').length,history);
  }
  assert.equal(Object.hasOwn(model.preset(),'ocean_temperature'),false);
  const before=model.preset();assert.throws(()=>model.oceanTemperature('auto'));assert.deepEqual(model.preset(),before);
  for(const ocean_temperature of [null,{},true,2,'standard','hot','WARM'])assert.throws(()=>validate({...blank(),ocean_temperature}));
+});
+
+test('mixed object, parameter and brush operations undo and redo in one chronological history',async()=>{
+ const model=new Model(blank(),'2'),index=model.addEntry('island',100,-200),initial=model.preset();
+ await stroke(model,'land',[[600,600]]);const painted=model.grid.toJSON();
+ model.changeEntry(index,{x:-512,z:256,temperature:'warm',rotation:45});const changed=model.preset();
+ model.rename('Coast Study');model.oceanTemperature('cold');
+ model.history();assert.equal(model.config.ocean_temperature,undefined);
+ model.history();assert.deepEqual(model.preset(),changed);
+ model.history();assert.equal(model.config.entries[0].x,100);assert.deepEqual(model.grid.toJSON(),painted);
+ model.history();assert.deepEqual(model.preset(),initial);
+ model.history();assert.equal(model.config.entries.length,0);
+ for(let i=0;i<5;i++)model.history(true);
+ assert.equal(model.config.name,'Coast Study');assert.equal(model.config.ocean_temperature,'cold');assert.equal(model.config.entries[0].x,-512);assert.deepEqual(model.grid.toJSON(),painted);
+ const before=model.preset(),count=model.undoStack.length;
+ assert.throws(()=>model.changeEntry(0,{radius_x:-1}));assert.deepEqual(model.preset(),before);assert.equal(model.undoStack.length,count);
+ const duplicate=model.duplicateEntry(0);assert.equal(duplicate,1);assert.equal(model.config.entries[1].x,-448);
+ model.removeEntry(1);assert.equal(model.config.entries.length,1);model.history();assert.equal(model.config.entries.length,2);
+});
+
+test('legacy geometry aliases are replaced atomically and seed/source edits preserve painted data',async()=>{
+ const model=new Model({entries:[{center_x:1,center_z:2,x_divisor:100,z_divisor:200,rotation_degrees:5}]},'2');
+ await stroke(model,'land',[[600,600]]);const paint=model.grid.toJSON();
+ model.changeEntry(0,{x:10,z:20,radius_x:300,radius_z:400,rotation:90});assert.equal(model.config.entries[0].center_x,undefined);assert.equal(model.config.entries[0].x_divisor,undefined);
+ model.configure({...model.config,name:'Seed study'},'3');assert.equal(model.seed,'3');assert.deepEqual(model.grid.toJSON(),paint);
+ model.history();assert.equal(model.seed,'2');assert.equal(model.config.entries[0].x,10);
+});
+
+test('a connected painted island is selectable across tile seams and moves as one undo action',async()=>{
+ const model=new Model(blank(),'2');await stroke(model,'land',[[-257,-257],[-200,-257]]);await stroke(model,'land',[[600,600]]);
+ const before=model.grid.toJSON(),selection=await model.selectPaint(-257,-257);
+ assert.ok(selection.samples>0);assert.ok(selection.bounds.minX<-256&&selection.bounds.maxX>-256);
+ assert.equal(await model.selectPaint(4000,4000),null);
+ await model.selectPaint(-257,-257);const count=model.undoStack.length;
+ model.transformPaint(512,256);assert.equal(model.undoStack.length,count+1);
+ assert.equal(model.grid.apply(0,-257,-257),0);assert.equal(model.grid.apply(0,255,-1),1);assert.equal(model.grid.apply(0,600,600),1);
+ const sorted=grid=>({...grid,tiles:grid.tiles.slice().sort((a,b)=>a.x-b.x||a.z-b.z)});
+ model.history();assert.deepEqual(sorted(model.grid.toJSON()),sorted(before));model.history(true);assert.equal(model.grid.apply(0,255,-1),1);
+ await model.selectPaint(255,-1);model.transformPaint(0,0,true);assert.equal(model.grid.apply(0,255,-1),0);assert.equal(model.grid.apply(0,600,600),1);
+ model.history();assert.equal(model.grid.apply(0,255,-1),1);
+});
+
+test('paint selection is invalidated by edits and cancelled selection leaves the document untouched',async()=>{
+ const model=new Model(blank());await stroke(model,'land',[[0,0]]);await model.selectPaint(0,0);const before=model.preset();
+ model.rename('Renamed');assert.throws(()=>model.transformPaint(128,0),/Select the painted island again/);
+ await model.selectPaint(0,0);assert.throws(()=>model.transformPaint(30000000,0),/world bounds/);assert.deepEqual(model.preset().painted_map,before.painted_map);
 });
