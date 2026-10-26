@@ -100,7 +100,7 @@ test('changing ocean policy ignores late worker responses and invalid settings p
 test('Java capability negotiation rejects the old ocean policy and accepts the updated runtime',async()=>{
  const base={protocol:2,minecraft:'1.21.1',supported_generation_versions:[1,2,3,4],capabilities:['painted_map_v1','vanilla_wge_only']};
  for(const enabled of [false,true]){
-  const ui=app({...base,capabilities:[...base.capabilities,...(enabled?['ocean_temperature_v1','island_outline_v1','coast_profile_v1','coast_smoothing_v1']:[])]});
+  const ui=app({...base,capabilities:[...base.capabilities,...(enabled?['ocean_temperature_v1','island_outline_v1','coast_profile_v1','natural_coast_v1']:[])]});
   await new Promise(resolve=>setImmediate(resolve));
   const source=ui.elements.get('#mapSource');source.value='biomes';source.listeners.change();ui.flush();
   const request=ui.messages.filter(m=>m.source==='biomes'&&!m.cancelOnly).at(-1);
@@ -116,8 +116,8 @@ test('an outline-aware Java runtime without coast profiles is explicitly incompa
 });
 
 
-test('a coast-aware runtime without the smoothing revision is rejected',async()=>{
+test('a coast-aware runtime without the natural coast revision is rejected',async()=>{
  const ui=app({protocol:2,minecraft:'1.21.1',supported_generation_versions:[1,2,3,4],capabilities:['painted_map_v1','vanilla_wge_only','ocean_temperature_v1','island_outline_v1','coast_profile_v1']});
  await new Promise(setImmediate);const source=ui.elements.get('#mapSource');source.value='biomes';source.listeners.change();ui.flush();
- const request=ui.messages.filter(m=>m.source==='biomes'&&!m.cancelOnly).at(-1);assert.equal(request.backendAvailable,false);assert.match(request.backendError,/smooth coast/);
+ const request=ui.messages.filter(m=>m.source==='biomes'&&!m.cancelOnly).at(-1);assert.equal(request.backendAvailable,false);assert.match(request.backendError,/natural coast/);
 });

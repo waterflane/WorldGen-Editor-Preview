@@ -71,3 +71,13 @@ test('overlapping short and long shelves join without a mask step at the shorter
  const scene=setup([island({coast:coast(16,512)}),island({x:600,radius:80,coast:coast(16,16)})]);let previous=sample(scene,480,0).value;
  for(let x=480.1;x<=525;x+=.1){const value=sample(scene,x,0).value;assert.ok(Math.abs(value-previous)<.005,`shelf ownership jump at ${x}`);previous=value;}
 });
+
+
+test('terrain influence is continuous in two dimensions and independent of query order',()=>{
+ const entries=[island({coast:coast(16,512)}),island({x:600,radius:80,coast:coast(128,16)})];
+ const first=setup(entries),second=setup(entries),points=[];
+ const progress=(scene,x,z)=>{const raw=core.rawCoastInfo(scene.config,scene.compiled,x,z);return scene.compiled.coastField.sample(x,z,raw)?.terrainProgress;};
+ for(let z=-64;z<=64;z+=4)for(let x=400;x<=580;x+=4)points.push([x,z,progress(first,x,z)]);
+ for(const [x,z,p] of points.toReversed())assert.ok(Math.abs(progress(second,x,z)-p)<1e-12,'cached ownership changed the continuous field');
+ for(const [x,z,p] of points){for(const [dx,dz] of [[.01,0],[0,.01]])assert.ok(Math.abs(progress(first,x+dx,z+dz)-p)<.001,'profile ownership created a terrain seam');}
+});
