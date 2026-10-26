@@ -65,6 +65,9 @@ async function drain(){
       else if(message.type==='entry-add'){await refresh(model.addEntry(message.kind,message.x,message.z));}
       else if(message.type==='entry-remove'){model.removeEntry(message.index);await refresh(Math.min(message.index,model.config.entries.length-1));}
       else if(message.type==='entry-duplicate'){await refresh(model.duplicateEntry(message.index));}
+      else if(message.type==='paint-convert'){
+        const selected=await model.convertPaint(()=>message.epoch===epoch);if(selected!==null)await refresh(selected);
+      }
       else if(message.type==='paint-pick'){
         const selection=await model.selectPaint(message.x,message.z,()=>message.epoch===epoch&&message.pick===latestPaintPick);
         if(message.epoch===epoch&&message.pick===latestPaintPick)self.postMessage({type:'paint-picked',epoch,pick:message.pick,selection});

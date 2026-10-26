@@ -49,3 +49,15 @@ test('paint picking does not create brush strokes and ignores an obsolete respon
  ui.emit({type:'paint-picked',epoch:0,pick:pick.pick,selection:{bounds:{minX:-32,maxX:32,minZ:-32,maxZ:32},x:0,z:0,revision:1}});
  assert.equal(ui.elements.get('paintProperties').hidden,true);
 });
+
+test('Convert to island opens the contour inspector instead of procedural noise controls',()=>{
+ const ui=workspace();ui.emit({type:'state',epoch:0,revision:1,tileCount:1,paintBounds:{minX:-128,maxX:128,minZ:-128,maxZ:128}});
+ const canvas=ui.elements.get('editorCanvas'),event={pointerId:1,button:0,clientX:400,clientY:300,preventDefault(){}};
+ canvas.listeners.pointerdown(event);canvas.listeners.pointerup(event);const pick=ui.messages.filter(m=>m.type==='paint-pick').at(-1);
+ ui.emit({type:'paint-picked',epoch:0,pick:pick.pick,selection:{bounds:{minX:-32,maxX:32,minZ:-32,maxZ:32},x:0,z:0,revision:1}});
+ ui.elements.get('convertPaintButton').listeners.click();assert.equal(ui.messages.at(-1).type,'paint-convert');assert.equal(ui.elements.get('convertPaintButton').disabled,true);
+ const entry={type:'island',name:'Painted Island 1',x:0,z:0,radius_x:64,radius_z:64,outline:{radius_x:64,radius_z:64,mask:{}}};
+ ui.emit({type:'loaded',epoch:0,name:'Test map',seed:'2',editor:{radius:128,roughness:.25},base:{entries:[entry]},preserveHistory:true,selected:0,paintBounds:null});
+ assert.equal(ui.elements.get('objectProperties').hidden,false);assert.equal(ui.elements.get('shapeCoastProperties').hidden,true);assert.equal(ui.elements.get('shapeNoiseProperties').hidden,true);assert.equal(ui.elements.get('outlineProperties').hidden,false);
+ assert.equal(ui.elements.get('objectGeometryKind').textContent,'CUSTOM CONTOUR');
+});

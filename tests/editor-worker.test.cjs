@@ -77,3 +77,18 @@ test('selecting and moving a painted island is serialized before exact-preview e
   const {Grid}=require('../painted-map.js'),grid=new Grid(JSON.parse(result.paintText));assert.equal(grid.apply(0,255,-1),1);assert.equal(grid.apply(0,-257,-257),0);
  }finally{await w.close();}
 });
+
+test('conversion creates an editable island, exports its contour and undoes as one action',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{entries:[]},seed:'2'});await w.next(m=>m.type==='state');
+  w.send({type:'begin',brush:{tool:'land',radius:64,roughness:.3}});w.send({type:'points',points:[{x:-257,z:-257}]});w.send({type:'end'});
+  w.send({type:'paint-pick',pick:1,x:-257,z:-257});await w.next(m=>m.type==='paint-picked');
+  w.send({type:'paint-convert'});const converted=await w.next(m=>m.type==='loaded'&&m.preserveHistory);assert.equal(converted.selected,0);assert.ok(converted.base.entries[0].outline);
+  w.send({type:'entry-change',index:0,patch:{radius_x:120,rotation:45,temperature:'warm'}});await w.next(m=>m.type==='state'&&m.revision===3);
+  w.send({type:'export',kind:'preset',id:50});const preset=JSON.parse((await w.next(m=>m.type==='export'&&m.id===50)).text);
+  assert.equal(preset.entries[0].temperature,'warm');assert.equal(preset.entries[0].rotation,45);assert.ok(preset.entries[0].outline.mask.tiles.length);assert.equal(preset.painted_map.tiles.length,0);
+  w.send({type:'undo'});await w.next(m=>m.type==='state'&&m.revision===4);
+  w.send({type:'undo'});const restored=await w.next(m=>m.type==='state'&&m.revision===5);assert.ok(restored.tileCount);
+  w.send({type:'export',kind:'preset',id:51});const before=JSON.parse((await w.next(m=>m.type==='export'&&m.id===51)).text);assert.equal(before.entries.length,0);assert.ok(before.painted_map.tiles.length);
+ }finally{await w.close();}
+});

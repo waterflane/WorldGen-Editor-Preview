@@ -4,7 +4,7 @@
   const controls=$('editorControls'),status=$('editorStatus'),hud=$('editorHud'),cursor=$('brushCursor');
   let active=false,worker=null,baseWorker=null,loaded=false,pendingLoad=false,epoch=0,baseId=0,exportId=0,revision=0,appliedRevision=0;
   let dirty=false,space=false,gesture=null,tool='select',view={x:0,z:0,blocksPerPixel:8},currentBase=null,selected=-1;
-  let initialFrame=true,sourcePending=false,paintedBounds=null,paintSelection=null,paintPick=0,pickContext=null,pickRelease=null,applying=false;
+  let initialFrame=true,sourcePending=false,paintedBounds=null,paintSelection=null,paintPick=0,pickContext=null,pickRelease=null,applying=false,converting=false;
   let pendingView=null;
   let pendingDirty=false;
   let previewDiverged=false;
@@ -33,6 +33,7 @@
         if(m.oceanTemperature!==undefined)$('oceanTemperature').value=m.oceanTemperature;
         pendingLoad=false;epoch=m.epoch;tell(m.error,true);
         if(sourcePending){$('sourceError').textContent=m.error;sourcePending=false;}
+        if(converting){converting=false;$('convertPaintButton').disabled=false;}
         if(exports.has(m.id)){exports.get(m.id).reject(new Error(m.error));exports.delete(m.id);}return;
       }
       if(m.type==='loaded'){
@@ -48,6 +49,7 @@
         renderScene();fillInspector();
         if(initialFrame&&!m.editor.view){initialFrame=false;frameAll();}
         if(sourcePending){sourcePending=false;$('sourceDialog').close();}
+        if(converting){converting=false;$('convertPaintButton').disabled=false;}
         pendingView=null;
         baseCache.clear();paintCache.clear();renderBase();draw();return;
       }
@@ -181,8 +183,8 @@
       const button=document.createElement('button');button.className='scene-object';button.type='button';button.setAttribute('aria-pressed',String(index===selected));
       const symbol=document.createElement('span');symbol.className='object-symbol';symbol.textContent=entry.type==='ocean'?'≈':entry.type==='archipelago'?'⠿':'◇';
       const text=document.createElement('span');text.className='object-text';const name=document.createElement('strong');name.textContent=entry.name||`Island ${index+1}`;
-      const meta=document.createElement('small'),g=entryGeometry(entry);meta.textContent=`${Math.round(g.x)}, ${Math.round(g.z)} · ${entry.type||'island'}`;text.append(name,meta);
-      const kind=document.createElement('span');kind.className='object-type';kind.textContent=entry.type==='archipelago'?'GROUP':'SHAPE';button.append(symbol,text,kind);
+      const meta=document.createElement('small'),g=entryGeometry(entry);meta.textContent=`${Math.round(g.x)}, ${Math.round(g.z)} · ${entry.outline?'outline island':entry.type||'island'}`;text.append(name,meta);
+      const kind=document.createElement('span');kind.className='object-type';kind.textContent=entry.outline?'OUTLINE':entry.type==='archipelago'?'GROUP':'SHAPE';button.append(symbol,text,kind);
       button.addEventListener('click',()=>{chooseTool('select');selectObject(index);});button.addEventListener('dblclick',()=>{const g=entryGeometry(entry);view={x:g.x,z:g.z,blocksPerPixel:Math.max(1,Math.min(96,Math.max(g.rx,g.rz)*3/Math.max(1,Math.min(canvas.clientWidth,canvas.clientHeight))))};renderBase();draw();});list.append(button);
     }
   }
@@ -191,10 +193,12 @@
     $('brushProperties').hidden=!brush;$('brushKindLabel').textContent=tool.toUpperCase();$('objectProperties').hidden=brush||!entry;$('noSelection').hidden=brush||!!entry||!!paintSelection;
     $('paintProperties').hidden=brush||!paintSelection;
     $('paintLayerButton').setAttribute('aria-pressed',String(brush||!!paintSelection));
-    $('selectionKind').textContent=brush?'BRUSH':paintSelection?'PAINTED':entry?(entry.type||'island').toUpperCase():'MAP';
+    $('selectionKind').textContent=brush?'BRUSH':paintSelection?'PAINTED':entry?.outline?'OUTLINE':entry?(entry.type||'island').toUpperCase():'MAP';
     if(paintSelection){const b=paintSelection.bounds;for(const [id,value]of Object.entries({paintCenterX:paintSelection.x,paintCenterZ:paintSelection.z,paintWidth:b.maxX-b.minX,paintDepth:b.maxZ-b.minZ}))$(id).value=value;}
     if(!entry)return;
+    $('shapeCoastProperties').hidden=!!entry.outline;$('shapeNoiseProperties').hidden=!!entry.outline;$('outlineProperties').hidden=!entry.outline;
     $('objectHeading').textContent=entry.name||'Island';
+    $('objectGeometryKind').textContent=entry.outline?'CUSTOM CONTOUR':'PARAMETRIC';
     const g=entryGeometry(entry),radius=Math.max(g.rx,g.rz),noise=entry.noise||{};
     const values={shapeName:entry.name||`Island ${selected+1}`,shapeX:g.x,shapeZ:g.z,shapeRadiusX:entry.radius_x??entry.x_divisor??entry.radius??entry.size,shapeRadiusZ:entry.radius_z??entry.z_divisor??entry.radius??entry.size,
       shapeStretchX:entry.stretch_x??1,shapeStretchZ:entry.stretch_z??1,shapeRotation:g.rotation,shapePower:entry.shape_power??2,shapeMultiplier:entry.multiplier??entry.size_multiplier??1,
@@ -279,6 +283,10 @@
   $('duplicateObjectButton').addEventListener('click',()=>{if(selected>=0&&!gesture)send('entry-duplicate',{index:selected});});
   $('deleteObjectButton').addEventListener('click',()=>{if(selected>=0&&!gesture)send('entry-remove',{index:selected});});
   $('deletePaintButton').addEventListener('click',()=>{if(paintSelection&&!gesture)send('paint-remove',{pick:paintPick});});
+  $('convertPaintButton').addEventListener('click',()=>{
+    if(!paintSelection||gesture||pendingLoad||converting)return;
+    converting=true;$('convertPaintButton').disabled=true;tell('Converting coastline to island…');send('paint-convert');
+  });
   $('shapeForm').addEventListener('submit',event=>{
     event.preventDefault();if(selected<0||pendingLoad)return;finishGesture();
     const number=id=>Number($(id).value),entry=currentBase.entries[selected];
@@ -286,6 +294,7 @@
       shape_power:number('shapePower'),multiplier:number('shapeMultiplier'),roughness:number('shapeRoughness'),shore_width:number('shapeShore'),overlap:$('shapeOverlap').checked,temperature:$('shapeTemperature').value,biome_patch_size:number('shapePatch'),
       noise:{seed:$('shapeNoiseSeed').value,scale:number('shapeNoiseScale'),first_octave:number('shapeOctave'),amplitudes:$('shapeAmplitudes').value.split(',').map(value=>value.trim()?Number(value):NaN)}};
     if(entry.type==='archipelago')Object.assign(patch,{count:number('shapeCount'),spread:number('shapeSpread'),spacing:number('shapeSpacing'),min_radius:number('shapeMinRadius'),max_radius:number('shapeMaxRadius')});
+    if(entry.outline){for(const key of ['noise','shape_power','roughness','shore_width','multiplier'])delete patch[key];patch.overlap=false;}
     chooseTool('select');send('entry-change',{index:selected,patch});
   });
   $('sourceButton').addEventListener('click',()=>{

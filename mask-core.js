@@ -31,12 +31,15 @@ function readDocument(input) {
     const version=input.generation_version===undefined?1:input.generation_version;
     if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
     if(input.config.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
+    if(input.config.entries?.some?.(entry=>entry?.outline!==undefined)&&version<3)throw new Error('Island outlines require generation_version 3');
     if(input.enabled!=null&&typeof input.enabled!=="boolean")throw new Error("World enabled must be boolean");
     return {config:{...input.config,enabled:(input.config.enabled??true)&&input.enabled!==false},generationVersion:version};
   }
-  const version=input?.generation_version??(input?.painted_map?3:2);
+  const outlines=input?.entries?.some?.(entry=>entry?.outline!==undefined);
+  const version=input?.generation_version??(input?.painted_map||outlines?3:2);
   if(!Number.isInteger(version)||version<1||version>3)throw new Error("Unsupported generation_version");
   if(input?.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
+  if(outlines&&version<3)throw new Error('Island outlines require generation_version 3');
   return {config:input,generationVersion:version};
 }
 
@@ -56,10 +59,14 @@ function parseConfig(input, seed) {
   const landShapes = [];
   const oceanShapes = [];
   const sourceSummaries = [];
+  const outlines=[];
+  const paintedMap=input.painted_map==null?null:new PaintedGrid(input.painted_map);let paintedTiles=paintedMap?.tiles.size||0;
 
   input.entries.forEach((entry, index) => {
     const parsed = parseEntry(entry, index, seed);
-    if (parsed.type === "archipelago") {
+    if(parsed.outline){paintedTiles+=parsed.outline.mask.tiles.size;if(paintedTiles>4096)throw new Error('Combined painted map and island outlines exceed 4096 tiles');}
+    if(parsed.outline){outlines.push(parsed);compiledEntries.push(parsed);sourceSummaries.push({...parsed,childCount:0});}
+    else if (parsed.type === "archipelago") {
       const children = compileArchipelago(parsed, seed);
       compiledEntries.push(...children);
       landShapes.push(...children);
@@ -77,7 +84,8 @@ function parseConfig(input, seed) {
   compiledEntries.landGrid = buildSpatialGrid(landShapes);
   compiledEntries.oceanGrid = buildSpatialGrid(oceanShapes);
   compiledEntries.sourceSummaries = sourceSummaries;
-  compiledEntries.paintedMap=input.painted_map==null?null:new PaintedGrid(input.painted_map);
+  compiledEntries.paintedMap=paintedMap;
+  compiledEntries.outlines=outlines;
   return compiledEntries;
 }
 
@@ -93,6 +101,7 @@ function parseEntry(entry, index, seed) {
   if (!Number.isInteger(patch) || patch<4 || patch>4096) throw new Error(`${path}.biome_patch_size must be between 4 and 4096`);
   const name = stringValue(entry.name, `island_${index + 1}`);
   const type = parseEntryType(stringValue(entry.type, "island"), path);
+  if((String(entry.type??'island').toLowerCase()==='outlined_island')!==Object.hasOwn(entry,'outline'))throw new Error(`${path}.outline requires type outlined_island with outline data`);
   const noise = entry.noise && typeof entry.noise === "object" ? entry.noise : {};
   const radius = positiveNumber(entry.radius ?? entry.size, -1, `${path}.radius`);
   const radiusX = positiveNumber(entry.radius_x ?? entry.x_divisor, radius, `${path}.radius_x`);
@@ -166,13 +175,29 @@ function parseEntry(entry, index, seed) {
   if (![xDivisor,zDivisor].every(n=>Number.isFinite(n)&&n>=0.001&&n<=60000000)) throw new Error(`${path}: compiled radii outside supported range`);
   if (parsed.noise.firstOctave < -20 || parsed.noise.firstOctave > 20 || parsed.noise.scale>1024 || amplitudes.length>16 || !Number.isFinite(amplitudes.reduce((a,b)=>a+b,0)) || parsed.multiplier>100 || parsed.edgeWidth>10 || parsed.count>4096 || parsed.noise.firstOctave+amplitudes.length-1>12 || Math.abs(centerX)>30000000 || Math.abs(centerZ)>30000000 || Math.abs(rotation)>360000 || parsed.maxRadius*Math.max(1,parsed.maxStretch)>60000000 || parsed.maxStretch>100 || parsed.spacing>1000 || (type==="archipelago"&&parsed.minRadius*Math.min(1,parsed.minStretch)<0.001)) throw new Error(`${path}: noise or shape exceeds supported limits`);
   attachBounds(parsed);
+  if(Object.hasOwn(entry,'outline')){
+    if(type!=='island'||parsed.overlap)throw new Error(`${path}.outline requires type outlined_island and overlap false`);
+    const value=entry.outline;
+    if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(`${path}.outline must be an object`);
+    const rx=positiveNumber(value.radius_x,-1,`${path}.outline.radius_x`),rz=positiveNumber(value.radius_z,-1,`${path}.outline.radius_z`);
+    if(rx<.001||rz<.001||rx>60000000||rz>60000000)throw new Error(`${path}.outline reference radii outside supported range`);
+    if(!value.mask)throw new Error(`${path}.outline.mask is required`);
+    const mask=new PaintedGrid(value.mask),b=mask.bounds();
+    if(!b||b.minX < -rx||b.maxX>rx||b.minZ < -rz||b.maxZ>rz)throw new Error(`${path}.outline samples exceed reference radii or are empty`);
+    parsed.outline={radiusX:rx,radiusZ:rz,mask};
+    parsed.outlineScaleX=rx/(parsed.xDivisor*parsed.multiplier);parsed.outlineScaleZ=rz/(parsed.zDivisor*parsed.multiplier);
+    const extentX=(Math.max(Math.abs(b.minX),Math.abs(b.maxX))+4)/parsed.outlineScaleX,extentZ=(Math.max(Math.abs(b.minZ),Math.abs(b.maxZ))+4)/parsed.outlineScaleZ;
+    parsed.outlineExtentX=Math.abs(parsed.cos)*extentX+Math.abs(parsed.sin)*extentZ+8;
+    parsed.outlineExtentZ=Math.abs(parsed.sin)*extentX+Math.abs(parsed.cos)*extentZ+8;
+  }
   return parsed;
 }
 
 function parseEntryType(value, path) {
   const type = String(value).toLowerCase();
+  if(type==='outlined_island')return 'island';
   if (type === "island" || type === "ocean" || type === "archipelago") return type;
-  throw new Error(`${path}.type must be one of island, ocean, archipelago`);
+  throw new Error(`${path}.type must be one of island, outlined_island, ocean, archipelago`);
 }
 
 function sampleMask(config, compiled, blockX, blockZ) {
@@ -188,7 +213,7 @@ function sampleMask(config, compiled, blockX, blockZ) {
   }
   const land = Math.max(union, additive);
   if (land <= 0) {
-    return compiled.paintedMap?compiled.paintedMap.apply(0,blockX,blockZ):0;
+    return applyOverlays(0,compiled,blockX,blockZ);
   }
   let ocean = 0;
   for (const oceanShape of shapesNear(compiled, "ocean", blockX, blockZ)) {
@@ -196,7 +221,22 @@ function sampleMask(config, compiled, blockX, blockZ) {
     ocean = Math.max(ocean, sampleIsland(oceanShape, blockX, blockZ));
   }
   const base=clamp(Math.min(land, 1 - ocean), 0, 1);
-  return compiled.paintedMap?compiled.paintedMap.apply(base,blockX,blockZ):base;
+  return applyOverlays(base,compiled,blockX,blockZ);
+}
+
+function applyOverlays(base,compiled,x,z){
+  if(!compiled.outlines.length)return compiled.paintedMap?compiled.paintedMap.apply(base,x,z):base;
+  const ix=Math.floor(x/4),iz=Math.floor(z/4),fx=x/4-ix,fz=z/4-iz;let result=0;
+  for(let dz=0;dz<2;dz++)for(let dx=0;dx<2;dx++){
+    const bx=(ix+dx)*4,bz=(iz+dz)*4;let alpha=0,weighted=0;
+    for(const shape of compiled.outlines){
+      const px=bx-shape.centerX,pz=bz-shape.centerZ;if(Math.abs(px)>shape.outlineExtentX||Math.abs(pz)>shape.outlineExtentZ)continue;
+      const field=shape.outline.mask.field((px*shape.cos-pz*shape.sin)*shape.outlineScaleX,(px*shape.sin+pz*shape.cos)*shape.outlineScaleZ);
+      weighted=field.weightedValue+weighted*(1-field.alpha);alpha=field.alpha+alpha*(1-field.alpha);
+    }
+    if(compiled.paintedMap){const p=compiled.paintedMap.node(ix+dx,iz+dz),a=(p>>>16)/65535,v=(p&65535)/65535;weighted=a*v+weighted*(1-a);alpha=a+alpha*(1-a);}
+    result+=(dx?fx:1-fx)*(dz?fz:1-fz)*(base*(1-alpha)+weighted);
+  }return clamp(result,0,1);
 }
 
 function sampleIsland(island, blockX, blockZ) {

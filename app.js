@@ -107,8 +107,8 @@ for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener(
 if (location.protocol !== "file:") fetch("/api/info").then(r=>r.json()).then(info=>{
   backendAvailable=info.protocol===2&&info.minecraft==="1.21.1"
     &&[1,2,3].every(version=>info.supported_generation_versions?.includes(version))
-    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('vanilla_wge_only')&&info.capabilities?.includes('ocean_temperature_v1');
-  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2, generation 1/2/3, painted maps and ocean temperature rules for Minecraft 1.21.1; prepare the updated runtime";
+    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('vanilla_wge_only')&&info.capabilities?.includes('ocean_temperature_v1')&&info.capabilities?.includes('island_outline_v1');
+  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2, generation 1/2/3, painted maps, ocean temperature rules and island outlines for Minecraft 1.21.1; prepare the updated runtime";
   if(backendAvailable){mapSource.value="biomes";updateModeControls();requestRender();}
 }).catch(()=>{});
 let renderWorker = null;

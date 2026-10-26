@@ -58,7 +58,8 @@
     configure(config,seed=this.seed){
       if(this.stroke)throw new Error('Finish the current stroke first');
       const next={...config};delete next.painted_map;
-      const parsed=validate(next,seed),before={config:this.config,seed:this.seed};
+      // Editor documents target new v3 worlds; legacy inputs remain readable until edited.
+      const parsed=validate({...next,generation_version:3,painted_map:this.grid.toJSON()},seed),before={config:this.config,seed:this.seed};
       // Keep sparse paint and its undo history out of parameter edits.
       const after={config:{...parsed.config,painted_map:this.config.painted_map},seed:parsed.seed};
       const withoutPaint=value=>{const copy={...value.config};delete copy.painted_map;return {config:copy,seed:value.seed};};
@@ -116,7 +117,7 @@
       }
       if(locations.size*SIZE*SIZE*8>MAX_BYTES)throw new Error('Move exceeds the undo memory limit');
       const newTiles=[...locations.keys()].filter(key=>!this.grid.tiles.has(key)).length;
-      if(this.grid.tiles.size+newTiles>MAX_TILES)throw new Error('Painted map tile limit reached');
+      if(this.grid.tiles.size+newTiles+this.config.entries.reduce((n,e)=>n+(e.outline?.mask.tiles.length||0),0)>MAX_TILES)throw new Error('Combined painted map and island outline tile limit reached');
       for(const key of locations.keys()){before.set(key,this.grid.tiles.get(key)?.slice()??null);if(!this.grid.tiles.has(key))this.grid.tiles.set(key,new Uint32Array(SIZE*SIZE));}
       const put=(x,z,value)=>{const tx=Math.floor(x/SIZE),tz=Math.floor(z/SIZE);this.grid.tiles.get(`${tx}:${tz}`)[(z-tz*SIZE)*SIZE+x-tx*SIZE]=value;};
       try{
@@ -134,10 +135,53 @@
         return [...before.keys()];
       }catch(error){this.restore(before);throw error;}
     }
+    async convertPaint(active=()=>true){
+      if(this.stroke||!this.paintSelection||this.paintSelection.summary.revision!==this.revision)throw new Error('Select the painted island again before converting it');
+      const selection=this.paintSelection,cells=selection.cells.slice(),points=new Set(cells.map(([x,z])=>`${x}:${z}`));
+      let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+      for(const [x,z]of cells){minX=Math.min(minX,x);minZ=Math.min(minZ,z);maxX=Math.max(maxX,x);maxZ=Math.max(maxZ,z);}
+      const width=maxX-minX+1,height=maxZ-minZ+1;
+      if(width*height>1048576)throw new Error('Island bounds exceed 1048576 samples; convert a smaller connected region');
+      // Retain explicitly painted ocean holes inside the selected coastline, without
+      // stealing disconnected land objects or unrelated ocean outside its boundary.
+      if(width*height<=1048576){
+        const visited=new Uint8Array(width*height),queue=new Int32Array(width*height);let head=0,tail=0,budget=performance.now();
+        const push=(x,z)=>{const i=z*width+x;if(visited[i]||points.has(`${x+minX}:${z+minZ}`))return;visited[i]=1;queue[tail++]=i;};
+        for(let x=0;x<width;x++){push(x,0);push(x,height-1);}for(let z=0;z<height;z++){push(0,z);push(width-1,z);}
+        while(head<tail){const i=queue[head++],x=i%width,z=Math.floor(i/width);if(x)push(x-1,z);if(x+1<width)push(x+1,z);if(z)push(x,z-1);if(z+1<height)push(x,z+1);
+          if(performance.now()-budget>8){await pause();budget=performance.now();if(!active())return null;}}
+        for(let z=0;z<height;z++)for(let x=0;x<width;x++)if(!visited[z*width+x]&&!points.has(`${x+minX}:${z+minZ}`)){
+          const p=this.grid.node(x+minX,z+minZ);if((p>>>16)>0&&(p&65535)<=32767)cells.push([x+minX,z+minZ,p]);
+        }
+      }
+      if(!active())return null;
+      const cx=Math.round((minX+maxX)/2),cz=Math.round((minZ+maxZ)/2),local=new Grid();
+      for(const [x,z,p]of cells){const lx=x-cx,lz=z-cz,tx=Math.floor(lx/SIZE),tz=Math.floor(lz/SIZE),key=`${tx}:${tz}`;
+        if(!local.tiles.has(key))local.tiles.set(key,new Uint32Array(SIZE*SIZE));local.tiles.get(key)[(lz-tz*SIZE)*SIZE+lx-tx*SIZE]=p;}
+      const rx=(Math.max(Math.abs(minX-cx),Math.abs(maxX-cx))+1)*STEP,rz=(Math.max(Math.abs(minZ-cz),Math.abs(maxZ-cz))+1)*STEP;
+      const names=new Set(this.config.entries.map(entry=>entry.name));let number=1;while(names.has(`Painted Island ${number}`))number++;
+      const entry={type:'outlined_island',name:`Painted Island ${number}`,x:cx*STEP,z:cz*STEP,radius_x:rx,radius_z:rz,
+        rotation:0,temperature:'standard',roughness:0,shore_width:.001,outline:{radius_x:rx,radius_z:rz,mask:local.toJSON()}};
+      const config={...this.config,generation_version:3,entries:[...this.config.entries,entry]};
+      const tiles=new Map();for(const [x,z]of cells){const key=`${Math.floor(x/SIZE)}:${Math.floor(z/SIZE)}`;if(!tiles.has(key))tiles.set(key,this.grid.tiles.get(key).slice());}
+      const metadata={...config};delete metadata.painted_map;
+      const bytes=tiles.size*SIZE*SIZE*8+new TextEncoder().encode(JSON.stringify(metadata)).length*2;
+      if(bytes>MAX_BYTES)throw new Error('Conversion exceeds the undo memory limit');
+      const before={config:this.config,seed:this.seed,tiles},afterTiles=new Map();
+      try{
+        for(const [x,z]of cells){const tx=Math.floor(x/SIZE),tz=Math.floor(z/SIZE);this.grid.tiles.get(`${tx}:${tz}`)[(z-tz*SIZE)*SIZE+x-tx*SIZE]=0;}
+        for(const key of tiles.keys()){
+          const data=this.grid.tiles.get(key);if(!data.some(p=>p>>>16))this.grid.tiles.delete(key);afterTiles.set(key,this.grid.tiles.get(key)?.slice()??null);
+        }
+        config.painted_map=this.grid.toJSON();validate(config,this.seed);
+        this.config=config;this.remember({kind:'compound',before,after:{config,seed:this.seed,tiles:afterTiles},bytes});this.revision++;this.paintSelection=null;
+        return this.config.entries.length-1;
+      }catch(error){this.config=before.config;this.restore(tiles);throw error;}
+    }
     begin({radius=128,roughness=.25,tool='land'}){
       if(this.stroke)throw new Error('Finish the current stroke first');
       if(!['land','ocean'].includes(tool))throw new Error('Invalid brush');
-      this.settings({radius,roughness});this.stroke={radius,roughness,target:tool==='land'?1:0,before:new Map(),coverage:new Map(),last:null};
+      this.settings({radius,roughness});this.stroke={radius,roughness,target:tool==='land'?1:0,before:new Map(),coverage:new Map(),last:null,outlineTiles:this.config.entries.reduce((n,e)=>n+(e.outline?.mask.tiles.length||0),0)};
     }
     async point(x,z,onPatch=()=>{},active=()=>true){
       if(!this.stroke||!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>BOUND||Math.abs(z)>BOUND)throw new Error('Brush outside world bounds');
@@ -155,7 +199,7 @@
             const tx=Math.floor(gx/SIZE),tz=Math.floor(gz/SIZE),key=`${tx}:${tz}`,i=(gz-tz*SIZE)*SIZE+gx-tx*SIZE;
             if(!s.before.has(key)){
               if((s.before.size+1)*SIZE*SIZE*8>MAX_BYTES)throw new Error('Stroke too large to undo; use shorter strokes');
-              if(!this.grid.tiles.has(key)&&this.grid.tiles.size>=MAX_TILES)throw new Error('Painted map tile limit reached');
+              if(!this.grid.tiles.has(key)&&this.grid.tiles.size+s.outlineTiles>=MAX_TILES)throw new Error('Combined painted map and island outline tile limit reached');
               s.before.set(key,this.grid.tiles.get(key)?.slice()??null);s.coverage.set(key,new Float64Array(SIZE*SIZE));
               if(!this.grid.tiles.has(key))this.grid.tiles.set(key,new Uint32Array(SIZE*SIZE));
             }
@@ -184,6 +228,7 @@
       const from=redo?this.redoStack:this.undoStack,to=redo?this.undoStack:this.redoStack,item=from.pop();if(!item)return [];
       to.push(item);this.revision++;
       this.historyBytes=this.undoStack.reduce((n,h)=>n+h.bytes,0);
+      if(item.kind==='compound'){const state=redo?item.after:item.before;this.config=state.config;this.seed=state.seed;this.restore(state.tiles);this.paintSelection=null;return [...state.tiles.keys()];}
       if(item.kind==='document'){Object.assign(this,redo?item.after:item.before);return [...this.grid.tiles.keys()];}
       this.restore(redo?item.after:item.before);return [...item.before.keys()];
     }

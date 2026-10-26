@@ -19,6 +19,19 @@
       }
     }
     node(x,z){const tx=Math.floor(x/SIZE),tz=Math.floor(z/SIZE);return this.tiles.get(`${tx}:${tz}`)?.[(z-tz*SIZE)*SIZE+x-tx*SIZE]??0;}
+    field(x,z){
+      const gx=x/STEP,gz=z/STEP,ix=Math.floor(gx),iz=Math.floor(gz),fx=gx-ix,fz=gz-iz;let alpha=0,weightedValue=0;
+      for(let dz=0;dz<2;dz++)for(let dx=0;dx<2;dx++){
+        const p=this.node(ix+dx,iz+dz),weight=(dx?fx:1-fx)*(dz?fz:1-fz),a=(p>>>16)/65535;
+        alpha+=weight*a;weightedValue+=weight*a*(p&65535)/65535;
+      }return {alpha,weightedValue};
+    }
+    bounds(){
+      let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+      for(const [key,data]of this.tiles){const [tx,tz]=key.split(':').map(Number);
+        for(let i=0;i<data.length;i++)if(data[i]>>>16){const x=(tx*SIZE+i%SIZE)*STEP,z=(tz*SIZE+Math.floor(i/SIZE))*STEP;minX=Math.min(minX,x);maxX=Math.max(maxX,x);minZ=Math.min(minZ,z);maxZ=Math.max(maxZ,z);}}
+      return minX===Infinity?null:{minX,minZ,maxX,maxZ};
+    }
     apply(base,x,z){
       const gx=x/STEP,gz=z/STEP,ix=Math.floor(gx),iz=Math.floor(gz),fx=gx-ix,fz=gz-iz;let result=0;
       for(let dz=0;dz<2;dz++)for(let dx=0;dx<2;dx++){
