@@ -229,21 +229,24 @@ function rawCoastInfo(config,compiled,x,z){
   if(overlay)owner=overlay;
   return {value,owner};
 }
+const COAST_RECOVERY=256;
+function coastSmooth(t){t=clamp(t,0,1);return t*t*(3-2*t);}
 function coastValue(sample,raw){
   const {distance,owner}=sample,b=owner.coast.beach_width_blocks,s=owner.coast.shallow_ocean_width_blocks;
-  if(distance>=0){if(b===0)return Math.max(.72,raw);if(distance<=b)return .54+.04*distance/b;
-    let t=Math.min(1,(distance-b)/64);t=t*t*(3-2*t);return .58+(Math.max(.58,raw)-.58)*t;}
-  const d=-distance;if(s>0&&d<=s)return .54-.46*d/s;
-  return Math.min(raw,.079*Math.max(0,1-(d-s)/64));
+  if(distance>=0){const edge=b>0?.58:.54;if(b>0&&distance<=b)return .54+.04*coastSmooth(distance/b);
+    return edge+(Math.max(edge,raw)-edge)*coastSmooth((distance-b)/COAST_RECOVERY);}
+  const d=-distance;if(s>0&&d<=s)return .54-.46*coastSmooth(d/s);
+  return (s>0?.08:.54)*(1-coastSmooth((d-s)/COAST_RECOVERY));
 }
+
 class CoastField {
   constructor(raw,compiled){
-    this.raw=raw;this.emptyTiles=new Set();this.deadline=Infinity;this.tiles=new Map();this.hints=new Map();this.bounds=[];this.landReach=64;this.waterReach=64;
+    this.raw=raw;this.emptyTiles=new Set();this.deadline=Infinity;this.tiles=new Map();this.hints=new Map();this.bounds=[];this.landReach=COAST_RECOVERY;this.waterReach=COAST_RECOVERY;
     for(const shape of [...compiled.landShapes,...compiled.outlines])if(shape.coast){
       let ex,ez;if(shape.outline){ex=shape.outlineExtentX;ez=shape.outlineExtentZ;}
       else{const reach=shape.multiplier*(1+shape.noiseStrength)+shape.edgeWidth,rx=shape.xDivisor*reach,rz=shape.zDivisor*reach;ex=Math.abs(shape.cos)*rx+Math.abs(shape.sin)*rz+4;ez=Math.abs(shape.sin)*rx+Math.abs(shape.cos)*rz+4;}
       this.bounds.push({minX:shape.centerX-ex,minZ:shape.centerZ-ez,maxX:shape.centerX+ex,maxZ:shape.centerZ+ez});
-      this.landReach=Math.max(this.landReach,shape.coast.beach_width_blocks+64);this.waterReach=Math.max(this.waterReach,shape.coast.shallow_ocean_width_blocks+64);
+      this.landReach=Math.max(this.landReach,shape.coast.beach_width_blocks+COAST_RECOVERY);this.waterReach=Math.max(this.waterReach,shape.coast.shallow_ocean_width_blocks+COAST_RECOVERY);
     }
   }
   remember(cache,key,value,max){cache.delete(key);cache.set(key,value);while(cache.size>max)cache.delete(cache.keys().next().value);return value;}
@@ -251,9 +254,9 @@ class CoastField {
   band(segment,land){return land?segment.owner.coast.beach_width_blocks:segment.owner.coast.shallow_ocean_width_blocks;}
   sample(x,z,raw){
     const land=raw.value>=.54;if(land&&!raw.owner?.coast)return null;
-    let best=land?this.landReach:this.waterReach;const key=`${Math.floor(x/64)}:${Math.floor(z/64)}`;let nearest=this.hints.get(key);
-    if(nearest){const d=this.distance(nearest,x,z);if(d<=best&&d<=this.band(nearest,land)&&this.band(nearest,land)>0)best=Math.min(land?this.landReach:this.waterReach,d+1e-9);nearest=null;}
-    let recovery=null,recoveryDistance=land?this.landReach:this.waterReach;
+    const reach=land?this.landReach:this.waterReach,maxBand=reach-COAST_RECOVERY;let best=reach,bestScore=Infinity,bestDistance=reach;const key=`${Math.floor(x/64)}:${Math.floor(z/64)}`;let nearest=this.hints.get(key);
+    if(nearest){const d=this.distance(nearest,x,z);const width=this.band(nearest,land);if(width>0&&d<=width){bestScore=d/width+1e-12;best=Math.min(reach,bestScore*maxBand+1e-8);}nearest=null;}
+    let recovery=null,recoveryDistance=reach,recoveryProgress=Infinity;
     const seen=new Set(),candidates=[];
     for(const b of this.bounds){
       const minX=Math.floor(Math.max(b.minX,x-best)/64),maxX=Math.floor(Math.min(b.maxX,x+best)/64),minZ=Math.floor(Math.max(b.minZ,z-best)/64),maxZ=Math.floor(Math.min(b.maxZ,z+best)/64);
@@ -263,9 +266,9 @@ class CoastField {
       }
     }
     candidates.sort((a,b)=>a.distance-b.distance||a.z-b.z||a.x-b.x);
-    for(const candidate of candidates){if(candidate.distance>best)break;for(const segment of this.tile(candidate.x,candidate.z)){const d=this.distance(segment,x,z),width=this.band(segment,land);if(width>0&&d<=width&&d<best){best=d;nearest=segment;}else if(d<=width+64&&d<recoveryDistance){recoveryDistance=d;recovery=segment;}}}
-    if(!nearest){nearest=recovery;best=recoveryDistance;}
-    if(nearest){this.remember(this.hints,key,nearest,1024);const limit=(land?nearest.owner.coast.beach_width_blocks:nearest.owner.coast.shallow_ocean_width_blocks)+64;if(best<=limit)return {distance:land?best:-Math.max(1e-9,best),owner:nearest.owner};}
+    for(const candidate of candidates){if(candidate.distance>best)break;for(const segment of this.tile(candidate.x,candidate.z)){const d=this.distance(segment,x,z),width=this.band(segment,land);if(width>0&&d<=width){const score=d/width;if(score<bestScore){bestScore=score;best=Math.min(reach,score*maxBand+1e-8);bestDistance=d;nearest=segment;}}else if(d<=width+COAST_RECOVERY&&d-width<recoveryProgress){recoveryProgress=d-width;recoveryDistance=d;recovery=segment;}}}
+    if(!nearest){nearest=recovery;bestDistance=recoveryDistance;}
+    if(nearest){this.remember(this.hints,key,nearest,1024);const limit=(land?nearest.owner.coast.beach_width_blocks:nearest.owner.coast.shallow_ocean_width_blocks)+COAST_RECOVERY;if(bestDistance<=limit)return {distance:land?bestDistance:-Math.max(1e-9,bestDistance),owner:nearest.owner};}
     return raw.owner?.coast?{distance:land?Infinity:-Infinity,owner:raw.owner}:null;
   }
   tile(tx,tz){

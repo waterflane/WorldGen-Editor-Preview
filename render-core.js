@@ -33,7 +33,7 @@
     }
     async function render(message,active,{preview,onProgress}={}){
       const started=performance.now();
-      const nextKey=message.seedText+"\n"+message.configText;
+      const nextKey="coast2\n"+message.seedText+"\n"+message.configText;
       if(nextKey!==key){
         const document=WgeMask.readDocument(JSON.parse(message.configText)),parsed=document.config,next=WgeMask.parseConfig(parsed,WgeMask.parseSeed(message.seedText));
         config=parsed;compiled=next;generationVersion=document.generationVersion;key=nextKey;session=null;tiles.clear();levels.clear();
@@ -42,7 +42,7 @@
       // A 16x16 sample tile amortizes HTTP/composition while remaining cancellable per sample.
       const size=16;
       if(java&&!message.backendAvailable)throw new Error(message.backendError||"Start the local Java preview and open its URL to view biomes");
-      if(java&&!session){session=await post("/api/session",{seed:message.seedText,config,generation_version:generationVersion,client},active);if(!session)return null;}
+      if(java&&!session){session=await post("/api/session",{seed:message.seedText,config,generation_version:generationVersion,coast_revision:2,client},active);if(!session)return null;}
       const step=sampleStep(message);
       const includeHeights=!!message.relief&&message.heightMode==="surface";
       const group=(java?session.session:"mask")+":"+message.heightMode+(java&&includeHeights?":heights":"");

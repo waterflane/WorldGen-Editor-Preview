@@ -40,7 +40,7 @@ test('overlapping land has no internal beach and ocean cutouts retain their wate
 
 test('maximum widths are finite and contour caches are bounded',()=>{
  const scene=setup([island({coast:coast(4096,4096)})]);const start=performance.now();
- assert.equal(sample(scene,4000,0).zone,2);assert.equal(sample(scene,4400,0).value,0);
+ assert.equal(sample(scene,4000,0).zone,2);assert.equal(sample(scene,4400,0).zone,1);assert.equal(sample(scene,4600,0).value,0);
  for(let x=-256;x<=256;x+=8)assert.ok(Number.isFinite(sample(scene,x,0).value));
  assert.ok(scene.compiled.coastField.tiles.size<=512);assert.ok(scene.compiled.coastField.hints.size<=1024);
  console.log(`coast maximum-width scenario: ${(performance.now()-start).toFixed(1)} ms`);
@@ -59,4 +59,15 @@ test('large coast queries yield for cancellation and reuse bounded empty geometr
 test('overlapping shelves retain the wider island band beyond a neighboring short shelf',()=>{
  const scene=setup([island({coast:coast(16,512)}),island({x:600,radius:80,coast:coast(16,16)})]);
  assert.equal(sample(scene,470,0).zone,2);
+});
+
+test('shelf recovery is continuous even where the original procedural mask is zero',()=>{
+ const owner={coast:coast(16,128)},epsilon=1e-5;
+ const left=core.coastValue({distance:-128+epsilon,owner},0),right=core.coastValue({distance:-128-epsilon,owner},0);
+ assert.ok(Math.abs(left-right)<1e-5,`shelf boundary jumps from ${left} to ${right}`);
+});
+
+test('overlapping short and long shelves join without a mask step at the shorter edge',()=>{
+ const scene=setup([island({coast:coast(16,512)}),island({x:600,radius:80,coast:coast(16,16)})]);let previous=sample(scene,480,0).value;
+ for(let x=480.1;x<=525;x+=.1){const value=sample(scene,x,0).value;assert.ok(Math.abs(value-previous)<.005,`shelf ownership jump at ${x}`);previous=value;}
 });
