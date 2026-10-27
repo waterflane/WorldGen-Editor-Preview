@@ -96,11 +96,27 @@
         </form>
       </div>
       <section id="noSelection" class="property-section"><span class="empty-icon">◇</span><h3>No object selected</h3></section>
-      <details class="property-section" open><summary>Map settings</summary><label>Generation profile<select id="generationProfile"><option value="vanilla">Minecraft + WGE</option></select></label><div class="field-pair"><button id="importModpackButton" type="button">Import modpack folder</button><button id="reloadProfileButton" type="button">Reload profile</button></div><button id="cancelProfileButton" type="button" hidden>Cancel preparation</button><p id="profileStatus" role="status"></p><label id="worldPresetField" hidden>World preset<select id="worldPreset"><option value="minecraft:normal">minecraft:normal</option></select></label><details><summary>Profile details</summary><label>Modded heap <small>MiB · applied on reload</small><input id="profileHeap" type="number" min="512" max="16384" step="256" value="2048"></label><div id="profileDetails"></div></details><label>Map name<input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label><label>World seed<input id="editorSeed" type="text" value="0" spellcheck="false"></label><label>Temperature<select id="mapTemperature"><option value="standard">Default</option><option value="cold">Cold</option><option value="temperate">Temperate</option><option value="warm">Warm</option><option value="minecraft:mushroom">Mushroom</option></select></label><label>Coastal ocean temperature<select id="oceanTemperature"><option value="">Default (from islands)</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label></details>
+      <details class="property-section" id="mapSettings" open>
+        <summary>Map settings</summary>
+        <div class="settings-fields">
+          <label><span>Map name</span><input id="editorName" type="text" value="Untitled Map" maxlength="120" spellcheck="false"></label>
+          <label><span>World seed</span><input id="editorSeed" type="text" value="0" spellcheck="false"></label>
+          <label><span>Temperature</span><select id="mapTemperature"><option value="standard">Default</option><option value="cold">Cold</option><option value="temperate">Temperate</option><option value="warm">Warm</option><option value="minecraft:mushroom">Mushroom</option></select></label>
+          <label><span>Coastal ocean temperature</span><select id="oceanTemperature"><option value="">Default (from islands)</option><option value="temperate">Temperate</option><option value="cold">Cold</option><option value="warm">Warm</option></select></label>
+        </div>
+        <div class="modpack-controls">
+          <button id="importModpackButton" type="button">Import modpack folder</button>
+          <div id="modpackActions" class="field-pair" hidden><button id="reloadProfileButton" type="button" hidden>Reload mods</button><button id="useVanillaButton" type="button" hidden>Use Minecraft + WGE</button></div>
+          <button id="cancelProfileButton" type="button" hidden>Cancel preparation</button>
+          <p id="profileStatus" role="status" hidden></p>
+          <label id="worldPresetField" hidden>World preset<select id="worldPreset"><option value="minecraft:normal">minecraft:normal</option></select></label>
+          <details id="modpackDetails" hidden><summary>Modpack details</summary><label>Modded heap <small>MiB · applied on reload</small><input id="profileHeap" type="number" min="512" max="16384" step="256" value="2048"></label><div id="profileDetails"></div></details>
+        </div>
+      </details>
     </aside>
     <footer class="statusbar"><p id="editorStatus" role="status">Loading workspace…</p><span class="status-right"><span class="status-light"></span><span id="stateBadge">ready</span><span class="optional-text">Minecraft 1.21.1 · NeoForge</span></span></footer>
     <dialog id="sourceDialog"><header class="dialog-header"><div><h2>Advanced source</h2></div><button id="closeSourceButton" aria-label="Close source editor">×</button></header><textarea id="workspaceJsonInput" spellcheck="false" aria-label="Map configuration JSON"></textarea><p id="sourceError" class="hint" role="status"></p><footer><button id="applySourceButton" class="primary">Apply parameters</button></footer></dialog>
-    <div hidden aria-hidden="true"><button id="applyButton"></button><button id="loadDefaultButton"></button><button id="downloadButton"></button><button id="fitButton"></button><button id="resetButton"></button><button id="clearPaintButton"></button><button id="importPreviewButton"></button><input id="fileInput" type="file"><input id="seedInput"><textarea id="jsonInput"></textarea><span id="paintedLayerNotice"></span><div id="islandList"></div></div>
+    <div hidden aria-hidden="true"><select id="generationProfile"><option value="vanilla">Minecraft + WGE</option></select><button id="applyButton"></button><button id="loadDefaultButton"></button><button id="downloadButton"></button><button id="fitButton"></button><button id="resetButton"></button><button id="clearPaintButton"></button><button id="importPreviewButton"></button><input id="fileInput" type="file"><input id="seedInput"><textarea id="jsonInput"></textarea><span id="paintedLayerNotice"></span><div id="islandList"></div></div>
   </main>
   <script src="climate-options.js"></script><script src="painted-map.js"></script><script src="mask-core.js"></script><script src="biome-colors.js"></script><script src="render-core.js"></script><script src="tile-cache.js"></script><script src="document-format.js"></script><script src="workspace-geometry.js"></script><script src="app.js"></script><script src="editor.js"></script><script src="profiles.js"></script>
 </body>

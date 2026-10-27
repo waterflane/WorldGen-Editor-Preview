@@ -35,8 +35,9 @@ test('failed server validation does not replace the selected profile; obsolete v
 
 test('a missing project profile blocks exact preview until an available profile is selected',async()=>{
  const h=harness();await h.state.ready;await h.state.restore({id:'pack-missing',fingerprint:'old',worldPreset:'minecraft:normal'});
- await assert.rejects(h.state.validate(exported()),/available generation profile/);
- h.get('generationProfile').value='vanilla';h.get('generationProfile').listeners.change();await h.state.ready;
+ await assert.rejects(h.state.validate(exported()),/Project modpack is unavailable/);
+ assert.equal(h.get('useVanillaButton').hidden,false);
+ h.get('useVanillaButton').listeners.click();await h.state.ready;
  assert.equal((await h.state.validate(exported())).id,'vanilla');
 });
 

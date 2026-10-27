@@ -4,12 +4,13 @@
   const state={selection:{id:'vanilla',worldPreset:'minecraft:normal',fingerprint:''},catalog:null,profiles:[],ready:null};
   let sequence=0,job=null;
   async function api(path,body){const r=await fetch('/api/'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{}),v=await r.json();if(!r.ok)throw new Error(v.error||'Profile request failed');return v;}
-  function tell(text,error=false){status.textContent=text;status.classList.toggle('error',error);}
+  function tell(text,error=false){status.textContent=text;status.hidden=!text;status.classList.toggle('error',error);}
   function showAccuracy(){
     const vanilla=state.selection.id==='vanilla';
     const verified=state.catalog?.accuracy==='verified'&&state.selection.worldPreset==='minecraft:normal';
     $('accuracyProfile').textContent=vanilla?'Minecraft + WGE':verified?'Verified modpack':'Unverified modpack';
-    tell(vanilla?'Minecraft + WGE':verified?'Verified profile':'Unverified world preset or modpack');
+    $('modpackActions').hidden=vanilla;$('reloadProfileButton').hidden=vanilla;$('useVanillaButton').hidden=vanilla;$('modpackDetails').hidden=vanilla;
+    tell(vanilla?'':verified?'Verified modpack':'Unverified world preset or modpack');
   }
   async function list(){const data=await api('profiles/list');state.profiles=data.profiles;const value=select.value;select.replaceChildren();for(const p of data.profiles){const option=document.createElement('option');option.value=p.id;option.textContent=p.name;select.append(option);}select.value=value||'vanilla';}
   async function loadCatalog(id,serial){
@@ -51,11 +52,12 @@
   select.addEventListener('change',()=>{state.ready=choose(select.value);state.ready.catch(e=>tell(e.message,true));});
   $('importModpackButton').addEventListener('click',()=>{state.ready=prepare({heap_mib:Number($('profileHeap').value)});state.ready.catch(()=>{});});
   $('reloadProfileButton').addEventListener('click',()=>{if(select.value==='vanilla'){state.ready=choose('vanilla');state.ready.catch(e=>tell(e.message,true));return;}state.ready=prepare({profile:select.value,heap_mib:Number($('profileHeap').value)});state.ready.catch(()=>{});});
+  $('useVanillaButton').addEventListener('click',()=>{select.value='vanilla';state.ready=choose('vanilla');state.ready.catch(e=>tell(e.message,true));});
   $('cancelProfileButton').addEventListener('click',()=>{if(job)void api('profiles/cancel',{job}).catch(e=>tell(e.message,true));});
   $('worldPreset').addEventListener('change',()=>{state.selection.worldPreset=$('worldPreset').value;showAccuracy();window.dispatchEvent(new CustomEvent('wge:profile-selected'));});
   state.validate=async result=>{
     if(state.ready)await state.ready;
-    if(state.unavailableReference)throw new Error('Select an available generation profile before applying this project');
+    if(state.unavailableReference)throw new Error('Project modpack is unavailable; import it or use Minecraft + WGE before applying');
     const profile={...state.selection};
     const config=WgeDocument.attach(JSON.parse(result.metadataText),result.paintText);
     const request='{"seed":'+JSON.stringify(result.seed)+',"config":'+config+',"generation_version":'+(JSON.parse(result.metadataText).generation_version||3)+',"coast_revision":3,"profile":'+JSON.stringify(profile.id)+',"world_preset":'+JSON.stringify(profile.worldPreset)+',"expected_resources":'+JSON.stringify(profile.fingerprint)+'}';
@@ -69,7 +71,7 @@
         if([...$('worldPreset').options].some(o=>o.value===reference.worldPreset)){$('worldPreset').value=reference.worldPreset;state.selection.worldPreset=reference.worldPreset;showAccuracy();}
         if(reference.fingerprint&&reference.fingerprint!==state.selection.fingerprint)tell('Profile resources changed; apply again',true);
       }else{
-        state.unavailableReference=reference;const option=document.createElement('option');option.value='unavailable';option.textContent='Unavailable project profile';select.append(option);select.value='unavailable';tell('Project generation profile is not available',true);
+        state.unavailableReference=reference;const option=document.createElement('option');option.value='unavailable';option.textContent='Unavailable project profile';select.append(option);select.value='unavailable';$('modpackActions').hidden=false;$('reloadProfileButton').hidden=true;$('useVanillaButton').hidden=false;tell('Project modpack is unavailable',true);
       }
     })();state.ready=operation;operation.catch(error=>tell(error.message,true));return operation;
   };

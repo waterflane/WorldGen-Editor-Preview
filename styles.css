@@ -1191,3 +1191,31 @@ dialog>footer {
 }
 
 #profileStatus{font-size:11px;overflow-wrap:anywhere;margin:6px 0}#profileDetails{font-size:11px;max-height:140px;overflow:auto;overflow-wrap:anywhere}.biome-tooltip{white-space:pre-line}
+
+.settings-fields {
+  display:grid;
+  gap:18px;
+  margin-top:14px
+}
+
+.settings-fields label {
+  gap:7px
+}
+
+.settings-fields label>span {
+  padding-left:2px;
+  color:var(--text);
+  font-weight:500
+}
+
+.modpack-controls {
+  display:grid;
+  gap:10px;
+  margin-top:18px;
+  padding-top:14px;
+  border-top:1px solid var(--line)
+}
+
+details.property-section[open]:not(#mapSettings)>:not(summary) {
+  margin-top:12px
+}
