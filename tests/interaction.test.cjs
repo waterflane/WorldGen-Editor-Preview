@@ -98,7 +98,7 @@ test('changing ocean policy ignores late worker responses and invalid settings p
 });
 
 test('Java capability negotiation rejects the old ocean policy and accepts the updated runtime',async()=>{
- const base={protocol:2,minecraft:'1.21.1',supported_generation_versions:[1,2,3,4],capabilities:['painted_map_v1','vanilla_wge_only']};
+ const base={protocol:3,minecraft:'1.21.1',supported_generation_versions:[1,2,3,4,5],capabilities:['painted_map_v1','profiles_v1','climate_selections_v1']};
  for(const enabled of [false,true]){
   const ui=app({...base,capabilities:[...base.capabilities,...(enabled?['ocean_temperature_v1','island_outline_v1','coast_profile_v1','natural_coast_v1']:[])]});
   await new Promise(resolve=>setImmediate(resolve));

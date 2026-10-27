@@ -3,8 +3,8 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 function workspace(){
  const elements=new Map(),messages=[],workers=[],frames=[],applied=[];
  const context=new Proxy({},{get:(target,key)=>target[key]||(()=>{})});
- const element=()=>({value:'',checked:false,hidden:false,style:{},dataset:{},listeners:{},classList:{toggle(){}},
-  addEventListener(type,fn){this.listeners[type]=fn},setAttribute(){},replaceChildren(){},append(){},appendChild(){},
+ const element=()=>({value:'',options:[],checked:false,hidden:false,style:{},dataset:{},listeners:{},classList:{toggle(){}},
+  addEventListener(type,fn){this.listeners[type]=fn},setAttribute(){},replaceChildren(){this.options=[]},append(value){this.options.push(value)},appendChild(value){this.options.push(value)},
   getContext:()=>context,getBoundingClientRect:()=>({left:0,top:0,width:800,height:600}),setPointerCapture(){},hasPointerCapture:()=>true,releasePointerCapture(){},close(){},showModal(){},reportValidity:()=>true,
   requestSubmit(){this.listeners.submit({preventDefault(){}})}});
  const document={activeElement:{tagName:'BODY'},getElementById(id){if(!elements.has(id))elements.set(id,element());return elements.get(id)},createElement:element};
