@@ -8,6 +8,7 @@
   let pendingView=null;
   let pendingDirty=false;
   let previewDiverged=false;
+  let inspectorDirty=false,inspectorEntry=null,enterSubmission=false;
   let points=[],pointFrame=0,drawFrame=0,viewTimer=0,saveTimer=0,draftText=null,db=null;
   const exports=new Map();
   let operation=0,measurement=null,firstPaintPending=false,completePaintPending=false;
@@ -15,10 +16,11 @@
   const baseCache=WgeTileCache.create(makeImage),paintCache=WgeTileCache.create(makeImage,4096);
   function tell(text,error=false){status.textContent=text;status.title=text;status.classList.toggle('error',error);}
   function updateStatus(){
-    tell(`${dirty?'Unsaved changes':'Ready'} · ${revision===appliedRevision?'Biomes current':'Biomes pending'}${previewDiverged?' · Preview differs':''}${currentBase?.enabled===false?' · Generation disabled':''}`);
+    const current=revision===appliedRevision&&!inspectorDirty;
+    tell(`${dirty?'Unsaved changes':'Ready'} · ${current?'Biomes current':'Biomes pending'}${previewDiverged?' · Preview differs':''}${currentBase?.enabled===false?' · Generation disabled':''}`);
     $('documentTitle').textContent=$('editorName').value||'Untitled Map';
-    $('documentState').textContent=revision===appliedRevision?'Applied':'Draft';
-    $('viewModeLabel').textContent=active?'Map canvas':revision===appliedRevision?'Applied biomes':'Applied biomes · draft changed';
+    $('documentState').textContent=current?'Applied':'Draft';
+    $('viewModeLabel').textContent=active?'Map canvas':current?'Applied biomes':'Applied biomes · draft changed';
   }
   function send(type,data={}){worker?.postMessage({type,...data});}
   function ensureWorkers(){
@@ -42,7 +44,7 @@
         $('editorSeed').value=m.seed;$('brushRadius').value=m.editor.radius;$('brushRoughness').value=Math.round(m.editor.roughness*100);updateBrushLabels();
         if(m.name!==undefined)$('editorName').value=m.name;
         $('oceanTemperature').value=m.base.ocean_temperature??'';
-        if(!preserve){view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;}
+        if(!preserve){view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;inspectorDirty=false;inspectorEntry=null;}
         if(m.selected!==undefined)selected=m.selected;
         if(selected>=currentBase.entries.length)selected=currentBase.entries.length-1;
         if(!preserve&&currentBase.entries.length)selected=0;
@@ -106,7 +108,7 @@
     ensureWorkers();finishGesture(true);clearTimeout(saveTimer);pendingLoad=true;pendingView={...nextView};pendingDirty=unsaved;
     baseWorker.postMessage({id:++baseId,cancelOnly:true});send('load',{input,seed});tell('Loading project…');
   }
-  function okayToReplace(){return !dirty||confirm('The current project has not been saved to a file. Replace it?');}
+  function okayToReplace(){return (!dirty&&!inspectorDirty)||confirm('The current project has not been saved to a file. Replace it?');}
   function switchMode(editor){
     if(editor&&!active&&loaded)view={...WgePreview.snapshot().view};
     if(gesture)finishGesture();active=editor;
@@ -194,7 +196,10 @@
     $('paintLayerButton').setAttribute('aria-pressed',String(brush||!!paintSelection));
     $('selectionKind').textContent=brush?'BRUSH':paintSelection?'PAINTED':entry?.outline?'OUTLINE':entry?(entry.type||'island').toUpperCase():'MAP';
     if(paintSelection){const b=paintSelection.bounds;for(const [id,value]of Object.entries({paintCenterX:paintSelection.x,paintCenterZ:paintSelection.z,paintWidth:b.maxX-b.minX,paintDepth:b.maxZ-b.minZ}))$(id).value=value;}
-    if(!entry)return;
+    if(!entry){inspectorDirty=false;inspectorEntry=null;return;}
+    const identity=selected+':'+JSON.stringify(entry);
+    if(inspectorDirty&&inspectorEntry===identity)return;
+    inspectorDirty=false;inspectorEntry=identity;
     $('shapeCoastProperties').hidden=!!entry.outline;$('shapeNoiseProperties').hidden=!!entry.outline;
     $('objectHeading').textContent=entry.name||'Island';
     $('objectGeometryKind').textContent=entry.outline?'CUSTOM CONTOUR':'PARAMETRIC';
@@ -298,8 +303,7 @@
     $(slider).addEventListener('input',()=>{$(field).value=$(slider).value;});
     $(field).addEventListener('input',()=>{$(slider).value=$(field).value;});
   }
-  $('shapeForm').addEventListener('submit',event=>{
-    event.preventDefault();if(selected<0||pendingLoad)return;finishGesture();
+  function shapePatch(){
     const number=id=>Number($(id).value),entry=currentBase.entries[selected];
     const patch={name:$('shapeName').value.trim(),x:number('shapeX'),z:number('shapeZ'),radius_x:number('shapeRadiusX'),radius_z:number('shapeRadiusZ'),stretch_x:number('shapeStretchX'),stretch_z:number('shapeStretchZ'),rotation:number('shapeRotation'),
       shape_power:number('shapePower'),multiplier:number('shapeMultiplier'),roughness:number('shapeRoughness'),shore_width:number('shapeShore'),overlap:$('shapeOverlap').checked,temperature:$('shapeTemperature').value,biome_patch_size:number('shapePatch'),
@@ -307,7 +311,14 @@
     if(entry.type==='archipelago')Object.assign(patch,{count:number('shapeCount'),spread:number('shapeSpread'),spacing:number('shapeSpacing'),min_radius:number('shapeMinRadius'),max_radius:number('shapeMaxRadius')});
     if(entry.outline){for(const key of ['noise','shape_power','roughness','shore_width','multiplier'])delete patch[key];patch.overlap=false;}
     patch.coast=entry.type!=='ocean'&&$('customCoast').checked?{beach_width_blocks:number('beachWidth'),shallow_ocean_width_blocks:number('oceanWidth')}:null;
-    chooseTool('select');send('entry-change',{index:selected,patch});
+    return patch;
+  }
+  for(const type of ['input','change'])$('shapeForm').addEventListener(type,()=>{inspectorDirty=true;updateStatus();});
+  $('shapeForm').addEventListener('submit',event=>{
+    event.preventDefault();if(selected<0||pendingLoad)return;finishGesture();
+    const entry={index:selected,patch:shapePatch()};
+    if(!active||enterSubmission)void inspectCurrent({entry});
+    else{chooseTool('select');send('entry-change',entry);}
   });
   $('sourceButton').addEventListener('click',()=>{
     if(!loaded||pendingLoad)return;finishGesture();const config={...currentBase};delete config.painted_map;
@@ -320,7 +331,7 @@
   $('inspectModeButton').addEventListener('click',inspectCurrent);
   window.addEventListener('wge-preview-applied',event=>{
     if(!loaded||event.detail.fromEditor)return;
-    if(dirty||gesture||pendingLoad){previewDiverged=true;updateStatus();}
+    if(dirty||inspectorDirty||gesture||pendingLoad){previewDiverged=true;updateStatus();}
     else open(event.detail.document,event.detail.seed,event.detail.view);
   });
   $('editorSeed').addEventListener('change',()=>{finishGesture();send('seed',{seed:$('editorSeed').value});});
@@ -332,21 +343,34 @@
     const file=event.target.files[0];event.target.value='';if(!file||!okayToReplace())return;
     try{if(file.size>32*1024*1024)throw new Error('File exceeds 32 MiB');chooseTool('select');initialFrame=true;open(await file.text(),$('editorSeed').value);}catch(error){tell(error.message,true);}
   });
-  function exportDocument(kind){
+  function exportDocument(kind,settings){
     if(!loaded||pendingLoad||gesture)return Promise.reject(new Error('Finish the current action and wait for the map to load'));
-    return new Promise((resolve,reject)=>{const id=++exportId;exports.set(id,{resolve,reject});send('export',{id,kind,view:{...view}});});
+    return new Promise((resolve,reject)=>{const id=++exportId;exports.set(id,{resolve,reject});send('export',{id,kind,view:{...view},...(settings?{settings}:{})});});
   }
   function download(text,name){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,result.filename);if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
   $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,result.filename);tell(`Preset exported · Seed ${result.seed}`);}catch(error){tell(error.message,true);}});
-  async function inspectCurrent(){
+  async function inspectCurrent(options={}){
     if(applying)return;finishGesture();
+    const pendingObject=inspectorDirty&&selected>=0;
+    if((pendingObject||options.entry)&&!$('shapeForm').reportValidity())return;
+    const settings={seed:$('editorSeed').value,name:$('editorName').value,oceanTemperature:$('oceanTemperature').value,
+      ...(options.entry?{entry:options.entry}:pendingObject?{entry:{index:selected,patch:shapePatch()}}:{})};
     applying=true;$('applyEditorButton').disabled=true;
-    try{const result=await exportDocument('apply');WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;updateStatus();switchMode(false);}catch(error){tell(error.message,true);}
+    try{const result=await exportDocument('apply',settings);WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;inspectorDirty=false;fillInspector();updateStatus();switchMode(false);}catch(error){tell(error.message,true);}
     finally{applying=false;$('applyEditorButton').disabled=false;}
   }
   $('applyEditorButton').addEventListener('click',inspectCurrent);
   window.addEventListener('keydown',event=>{
+    const target=event.target||document.activeElement;
+    if(event.key==='Enter'&&!event.isComposing&&!event.repeat&&!event.ctrlKey&&!event.metaKey&&!event.altKey&&!event.shiftKey
+      &&!$('sourceDialog').open&&!/^(TEXTAREA|BUTTON|A|SUMMARY)$/.test(target?.tagName)){
+      event.preventDefault();
+      const form=target?.closest?.('#shapeForm');
+      if(form){enterSubmission=true;try{form.requestSubmit();}finally{enterSubmission=false;}}
+      else void inspectCurrent();
+      return;
+    }
     if($('sourceDialog').open||/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName))return;
     if(event.code==='Space'){event.preventDefault();space=true;cursor.hidden=true;}
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();if(!gesture)send(event.shiftKey?'redo':'undo');}
@@ -367,7 +391,7 @@
   window.addEventListener('keyup',event=>{if(event.code==='Space')space=false;});
   window.addEventListener('blur',()=>{space=false;finishGesture(true);});
   window.addEventListener('resize',()=>{draw();clearTimeout(viewTimer);viewTimer=setTimeout(renderBase,120);});
-  window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
+  window.addEventListener('beforeunload',event=>{if(dirty||inspectorDirty){event.preventDefault();event.returnValue='';}});
   function scheduleSave(){clearTimeout(saveTimer);saveTimer=setTimeout(async()=>{
     if(!db||gesture||pendingLoad)return;
     try{const result=await exportDocument('project');const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(result.text,'current');

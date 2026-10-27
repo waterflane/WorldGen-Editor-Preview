@@ -106,3 +106,26 @@ test('coast profiles are exported for exact Apply and invalid edits cannot repla
   w.send({type:'export',kind:'preset',id:74});assert.deepEqual(JSON.parse((await w.next(m=>m.type==='export'&&m.id===74)).text).entries[0].coast,coast);
  }finally{await w.close();}
 });
+
+test('Apply commits the current seed and object settings atomically and undoes them together',async()=>{
+ const w=worker();try{
+  w.send({type:'load',input:{name:'Before',entries:[{x:0,z:0,radius:160}]},seed:'2'});await w.next(m=>m.type==='state');
+  const settings={seed:'314',name:'After',oceanTemperature:'warm',entry:{index:0,patch:{radius_x:240,temperature:'cold'}}};
+  w.send({type:'export',kind:'apply',id:80,settings});
+  const result=await w.next(m=>m.type==='export'&&m.id===80),config=JSON.parse(result.metadataText);
+  assert.equal(result.seed,'314');assert.equal(result.revision,1);assert.equal(config.name,'After');assert.equal(config.ocean_temperature,'warm');
+  assert.equal(config.entries[0].radius_x,240);assert.equal(config.entries[0].temperature,'cold');
+  w.send({type:'undo'});await w.next(m=>m.type==='state'&&m.revision===2);
+  w.send({type:'export',kind:'apply',id:81});
+  const undone=await w.next(m=>m.type==='export'&&m.id===81),before=JSON.parse(undone.metadataText);
+  assert.equal(undone.seed,'2');assert.equal(before.name,'Before');assert.equal(before.ocean_temperature,undefined);assert.equal(before.entries[0].radius,160);
+  assert.equal(before.entries[0].temperature,undefined);
+  w.send({type:'export',kind:'apply',id:82,settings:{...settings,entry:{index:0,patch:{radius_x:0}}}});
+  await w.next(m=>m.type==='error'&&m.id===82);
+  w.send({type:'export',kind:'apply',id:83});
+  const afterError=await w.next(m=>m.type==='export'&&m.id===83);
+  assert.equal(afterError.seed,undone.seed);assert.equal(afterError.metadataText,undone.metadataText);assert.equal(afterError.revision,undone.revision);
+  w.send({type:'export',kind:'apply',id:84,settings:{...settings,seed:''}});
+  assert.match((await w.next(m=>m.type==='error'&&m.id===84)).error,/seed/);
+ }finally{await w.close();}
+});

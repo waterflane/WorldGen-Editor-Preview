@@ -94,6 +94,7 @@ async function drain(){
       else if(message.type==='export'){
         if(model.stroke)throw new Error('Finish the stroke before exporting');
         if(message.kind==='apply'){
+          if(message.settings){model.applySettings(message.settings);await refresh(message.settings.entry?.index);}
           self.postMessage({type:'export',id:message.id,epoch,kind:'apply',...WgeDocument.split(model.preset()),seed:model.seed,revision:model.revision});continue;
         }
         const value=message.kind==='project'?model.project(message.view):model.preset(),text=JSON.stringify(value);

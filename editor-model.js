@@ -68,14 +68,25 @@
       const bytes=new TextEncoder().encode(a+b).length;if(bytes>MAX_BYTES)throw new Error('Parameter change exceeds the undo memory limit');
       this.config=after.config;this.seed=after.seed;this.remember({kind:'document',before,after,bytes});this.revision++;
     }
-    changeEntry(index,patch){
+    entryConfig(index,patch){
       if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
       const entries=this.config.entries.slice();entries[index]={...entries[index],...patch};
       if(patch.coast===null)delete entries[index].coast;
       if(patch.noise)entries[index].noise={...this.config.entries[index].noise,...patch.noise};
       // A changed canonical radius must not be shadowed by a legacy alias.
       for(const [key,alias] of [['x','center_x'],['z','center_z'],['radius_x','x_divisor'],['radius_z','z_divisor'],['rotation','rotation_degrees'],['roughness','noise_strength'],['shore_width','edge_width']])if(Object.hasOwn(patch,key))delete entries[index][alias];
-      this.configure({...this.config,entries});
+      return {...this.config,entries};
+    }
+    changeEntry(index,patch){
+      this.configure(this.entryConfig(index,patch));
+    }
+    applySettings({seed=this.seed,name=this.config.name,oceanTemperature=this.config.ocean_temperature??'',entry}={}){
+      const resolved=mask.parseSeed(seed);if(resolved===null)throw new Error('Enter a world seed');
+      if(!['','temperate','cold','warm'].includes(oceanTemperature))throw new Error('Invalid coastal ocean temperature');
+      const next=entry?this.entryConfig(entry.index,entry.patch):{...this.config};
+      next.name=name;
+      if(oceanTemperature)next.ocean_temperature=oceanTemperature;else delete next.ocean_temperature;
+      this.configure(next,resolved.toString());
     }
     addEntry(type,x=0,z=0){
       if(!['island','ocean','archipelago'].includes(type))throw new Error('Invalid object type');
