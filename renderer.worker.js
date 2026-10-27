@@ -1,4 +1,4 @@
-importScripts("painted-map.js", "mask-core.js", "biome-colors.js", "render-core.js");
+importScripts('climate-options.js',"painted-map.js", "mask-core.js", "biome-colors.js", "render-core.js");
 const renderer=WgeRenderer.create();
 let latest=0,pending=null,running=false;
 self.onmessage=event=>{

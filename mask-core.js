@@ -2,6 +2,7 @@
 (function(root) {
 "use strict";
 const {Grid:PaintedGrid}=root.WgePaintedMap||(typeof require==='function'?require('./painted-map.js'):{});
+const climate=root.WgeClimate||(typeof require==='function'?require('./climate-options.js'):{});
 const DEFAULT_AMPLITUDES = [1.0, 0.78, 0.55, 0.34];
 const DEFAULT_NOISE_SCALE = 3.2;
 const DEFAULT_FIRST_OCTAVE = -1;
@@ -29,7 +30,8 @@ function readDocument(input) {
   if(input?.format!==undefined)throw new Error('Unsupported preview document format; open map projects in the map editor');
   if(input?.config){
     const version=input.generation_version===undefined?1:input.generation_version;
-    if(!Number.isInteger(version)||version<1||version>4)throw new Error("Unsupported generation_version");
+    if(!Number.isInteger(version)||version<1||version>5)throw new Error("Unsupported generation_version");
+    if(climate.modern(input.config)&&version<5)throw new Error("Extended temperatures require generation_version 5");
     if(input.config.entries?.some?.(entry=>entry?.coast!==undefined)&&version<4)throw new Error("Custom coasts require generation_version 4");
     if(input.config.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
     if(input.config.entries?.some?.(entry=>entry?.outline!==undefined)&&version<3)throw new Error('Island outlines require generation_version 3');
@@ -38,8 +40,9 @@ function readDocument(input) {
   }
   const outlines=input?.entries?.some?.(entry=>entry?.outline!==undefined);
   const coasts=input?.entries?.some?.(entry=>entry?.coast!==undefined);
-  const version=input?.generation_version??(coasts?4:input?.painted_map||outlines?3:2);
-  if(!Number.isInteger(version)||version<1||version>4)throw new Error("Unsupported generation_version");
+  const version=input?.generation_version??(climate.inferred(input)?5:coasts?4:input?.painted_map||outlines?3:2);
+  if(!Number.isInteger(version)||version<1||version>5)throw new Error("Unsupported generation_version");
+  if(climate.modern(input)&&version<5)throw new Error("Extended temperatures require generation_version 5");
   if(coasts&&version<4)throw new Error("Custom coasts require generation_version 4");
   if(input?.painted_map&&version<3)throw new Error("Painted maps require generation_version 3");
   if(outlines&&version<3)throw new Error('Island outlines require generation_version 3');
@@ -58,6 +61,7 @@ function parseConfig(input, seed) {
   if(input.name!=null&&(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>120||/[\u0000-\u001f\u007f-\u009f]/.test(input.name)))throw new Error('name must contain 1–120 characters without control characters');
   if (input.outer_ocean != null && (typeof input.outer_ocean !== "string" || !/^[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(input.outer_ocean))) throw new Error("outer_ocean is invalid");
   if (Object.hasOwn(input,'ocean_temperature') && !['temperate','cold','warm'].includes(input.ocean_temperature)) throw new Error('ocean_temperature must be temperate, cold or warm; omit it for default behavior');
+  if(input.temperature!==undefined&&!climate.valid(input.temperature))throw new Error('Invalid map temperature');
   const compiledEntries = [];
   const landShapes = [];
   const oceanShapes = [];
@@ -100,7 +104,7 @@ function parseEntry(entry, index, seed) {
   if (entry.noise != null && (typeof entry.noise !== "object" || Array.isArray(entry.noise))) throw new Error(`${path}.noise must be an object`);
   if (entry.exclude_biomes != null && (!Array.isArray(entry.exclude_biomes) || entry.exclude_biomes.some(id => typeof id !== "string" || !/^#?[a-z0-9_.-]+:[a-z0-9_./-]+$/.test(id)))) throw new Error(`${path}.exclude_biomes is invalid`);
   const temperature=stringValue(entry.temperature ?? entry.climate,"standard").toLowerCase();
-  if (!["cold","temperate","normal","warm","hot","standard","standart","vanilla","auto"].includes(temperature)) throw new Error(`${path}.temperature is invalid`);
+  if (!climate.valid(temperature)&&!["normal","hot","standart","vanilla","auto"].includes(temperature)) throw new Error(`${path}.temperature is invalid`);
   const patch=entry.biome_patch_size ?? 512;
   if (!Number.isInteger(patch) || patch<4 || patch>4096) throw new Error(`${path}.biome_patch_size must be between 4 and 4096`);
   const name = stringValue(entry.name, `island_${index + 1}`);

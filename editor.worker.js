@@ -1,4 +1,4 @@
-importScripts('painted-map.js','mask-core.js','editor-model.js','document-format.js');
+importScripts('climate-options.js','painted-map.js','mask-core.js','editor-model.js','document-format.js');
 let model=null,compiled=null,epoch=0,queue=[],running=false,operation=0,latestPaintPick=0;
 self.onmessage=event=>{
   const message=event.data;
@@ -27,7 +27,7 @@ function paintBounds(){
   for(const key of model.grid.tiles.keys()){const [x,z]=key.split(':').map(Number);minX=Math.min(minX,x*256);minZ=Math.min(minZ,z*256);maxX=Math.max(maxX,(x+1)*256);maxZ=Math.max(maxZ,(z+1)*256);}
   return {minX,minZ,maxX,maxZ};
 }
-function state(){self.postMessage({type:'state',epoch,operation,name:model.config.name,oceanTemperature:model.config.ocean_temperature??'',revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size,paintBounds:paintBounds()});}
+function state(){self.postMessage({type:'state',epoch,operation,name:model.config.name,oceanTemperature:model.config.ocean_temperature??'',temperature:model.config.temperature??'standard',revision:model.revision,canUndo:!!model.undoStack.length,canRedo:!!model.redoStack.length,tileCount:model.grid.tiles.size,paintBounds:paintBounds()});}
 async function refresh(selected){
   const base={...model.config,painted_map:{version:1,step:4,size:64,tiles:[]}};
   compiled=WgeMask.parseConfig(base,BigInt(model.seed));
@@ -60,6 +60,7 @@ async function drain(){
       else if(message.type==='begin'){operation=message.operation||0;model.begin(message.brush);}
       else if(message.type==='settings')model.settings(message.editor);
       else if(message.type==='name'){model.rename(message.name);await refresh();}
+      else if(message.type==='temperature'){model.applySettings({temperature:message.value});await refresh();}
       else if(message.type==='ocean-temperature'){model.oceanTemperature(message.value);await refresh();}
       else if(message.type==='entry-change'){model.changeEntry(message.index,message.patch);await refresh(message.index);}
       else if(message.type==='entry-add'){await refresh(model.addEntry(message.kind,message.x,message.z));}

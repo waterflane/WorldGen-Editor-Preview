@@ -2,6 +2,7 @@
 (function(root){
   const {Grid,SIZE,STEP,MAX_TILES}=root.WgePaintedMap||(typeof require==='function'?require('./painted-map.js'):{});
   const mask=root.WgeMask||(typeof require==='function'?require('./mask-core.js'):{});
+  const climate=root.WgeClimate||(typeof require==='function'?require('./climate-options.js'):{});
   const MAX_BYTES=32*1024*1024,BOUND=29999984;
   const pause=()=>new Promise(resolve=>typeof setImmediate==='function'?setImmediate(resolve):setTimeout(resolve,0));
   function noise(x,z){
@@ -9,7 +10,7 @@
     const ix=Math.floor(x),iz=Math.floor(z),u=x-ix,v=z-iz,s=u*u*(3-2*u),t=v*v*(3-2*v);
     return (hash(ix,iz)*(1-s)+hash(ix+1,iz)*s)*(1-t)+(hash(ix,iz+1)*(1-s)+hash(ix+1,iz+1)*s)*t;
   }
-  const targetVersion=config=>Math.max(3,config.generation_version||3,config.entries?.some(e=>e.coast!==undefined)?4:3);
+  const targetVersion=config=>Math.max(3,config.generation_version||3,climate.modern(config)?5:config.entries?.some(e=>e.coast!==undefined)?4:3);
   function validate(input,seed='0'){
     const project=input?.format==='wge-map-project';
     if(project&&input.version!==1)throw new Error('Unsupported project version');
@@ -28,7 +29,7 @@
     const radius=Number(editor.radius??128),roughness=Number(editor.roughness??.25),view=editor.view;
     if(!Number.isFinite(radius)||radius<8||radius>2048||!Number.isFinite(roughness)||roughness<0||roughness>1)throw new Error('Invalid brush settings');
     if(view&&(![view.x,view.z,view.blocksPerPixel].every(Number.isFinite)||Math.abs(view.x)>BOUND||Math.abs(view.z)>BOUND||view.blocksPerPixel<1||view.blocksPerPixel>96))throw new Error('Invalid project view');
-    return {config,seed:resolved.toString(),editor:{radius,roughness,...(view?{view:{...view}}:{})}};
+    return {config,seed:resolved.toString(),editor:{radius,roughness,...(editor.profile?{profile:structuredClone(editor.profile)}:{}),...(view?{view:{...view}}:{})}};
   }
   class Model {
     constructor(input,seed='0'){
@@ -56,17 +57,17 @@
       this.historyBytes=this.undoStack.reduce((n,h)=>n+h.bytes,0);
       while(this.undoStack.length>100||this.historyBytes>MAX_BYTES){this.historyBytes-=this.undoStack.shift().bytes;}
     }
-    configure(config,seed=this.seed){
+    configure(config,seed=this.seed,editor=this.editor){
       if(this.stroke)throw new Error('Finish the current stroke first');
       const next={...config};delete next.painted_map;
       // New coast profiles opt into v4; other edits preserve the document generation version.
-      const parsed=validate({...next,generation_version:targetVersion(next),painted_map:this.grid.toJSON()},seed),before={config:this.config,seed:this.seed};
+      const parsed=validate({...next,generation_version:targetVersion(next),painted_map:this.grid.toJSON()},seed),before={config:this.config,seed:this.seed,editor:this.editor};
       // Keep sparse paint and its undo history out of parameter edits.
-      const after={config:{...parsed.config,painted_map:this.config.painted_map},seed:parsed.seed};
-      const withoutPaint=value=>{const copy={...value.config};delete copy.painted_map;return {config:copy,seed:value.seed};};
+      const after={config:{...parsed.config,painted_map:this.config.painted_map},seed:parsed.seed,editor};
+      const withoutPaint=value=>{const copy={...value.config};delete copy.painted_map;return {config:copy,seed:value.seed,editor:value.editor};};
       const a=JSON.stringify(withoutPaint(before)),b=JSON.stringify(withoutPaint(after));if(a===b)return;
       const bytes=new TextEncoder().encode(a+b).length;if(bytes>MAX_BYTES)throw new Error('Parameter change exceeds the undo memory limit');
-      this.config=after.config;this.seed=after.seed;this.remember({kind:'document',before,after,bytes});this.revision++;
+      this.config=after.config;this.seed=after.seed;this.editor=after.editor;this.remember({kind:'document',before,after,bytes});this.revision++;
     }
     entryConfig(index,patch){
       if(!Number.isInteger(index)||!this.config.entries[index])throw new Error('Select an island first');
@@ -80,13 +81,16 @@
     changeEntry(index,patch){
       this.configure(this.entryConfig(index,patch));
     }
-    applySettings({seed=this.seed,name=this.config.name,oceanTemperature=this.config.ocean_temperature??'',entry}={}){
+    applySettings({seed=this.seed,name=this.config.name,oceanTemperature=this.config.ocean_temperature??'',temperature=this.config.temperature??'standard',profile=this.editor.profile,entry}={}){
       const resolved=mask.parseSeed(seed);if(resolved===null)throw new Error('Enter a world seed');
       if(!['','temperate','cold','warm'].includes(oceanTemperature))throw new Error('Invalid coastal ocean temperature');
       const next=entry?this.entryConfig(entry.index,entry.patch):{...this.config};
+      if(!climate.valid(temperature))throw new Error('Invalid map temperature');
+      if(temperature!=='standard')next.temperature=temperature;else delete next.temperature;
+      if(temperature!==(this.config.temperature??'standard'))next.generation_version=5;
       next.name=name;
       if(oceanTemperature)next.ocean_temperature=oceanTemperature;else delete next.ocean_temperature;
-      this.configure(next,resolved.toString());
+      this.configure(next,resolved.toString(),{...this.editor,...(profile?{profile:structuredClone(profile)}:{})});
     }
     addEntry(type,x=0,z=0){
       if(!['island','ocean','archipelago'].includes(type))throw new Error('Invalid object type');
