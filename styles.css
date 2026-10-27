@@ -267,15 +267,6 @@ details[open]>summary {
   background:#3a3d42
 }
 
-.review-tag {
-  margin-left:auto;
-  color:#a9a197;
-  border:1px solid #51463a;
-  padding:4px 8px;
-  border-radius:4px;
-  font-size:10px;
-  white-space:nowrap
-}
 
 .contextbar {
   grid-column:2/-1;
@@ -539,15 +530,8 @@ details[open]>summary {
   gap:9px
 }
 
-.eyebrow {
-  font-size:9px;
-  font-weight:600;
-  letter-spacing:.9px;
-  text-transform:uppercase;
-  color:#8e9c95
-}
 
-.scene-foot p,.hint,.help-box p {
+.hint {
   font-size:10px;
   line-height:1.6;
   color:var(--muted)
@@ -558,13 +542,7 @@ details[open]>summary {
   background:transparent
 }
 
-.help-box {
-  margin:0 12px 14px
-}
 
-.help-box p {
-  margin-top:8px
-}
 
 .viewport {
   grid-row:3;
@@ -749,22 +727,6 @@ canvas {
   color:#d19481
 }
 
-.canvas-note {
-  position:absolute;
-  top:12px;
-  left:50%;
-  transform:translateX(-50%);
-  max-width:calc(100% - 90px);
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  color:#a6bdc8;
-  font-size:10px;
-  pointer-events:none;
-  background:#17314190;
-  padding:4px 8px;
-  border-radius:3px
-}
 
 .biome-tooltip {
   position:absolute;
@@ -974,9 +936,6 @@ dialog>footer {
     gap:12px
   }
 
-  .review-tag {
-    display:none
-  }
 
   .wordmark {
     font-size:12px
@@ -1107,7 +1066,7 @@ dialog>footer {
     display:none
   }
 
-  .paint-layer,.scene-foot,.help-box {
+  .paint-layer,.scene-foot {
     display:none
   }
 
@@ -1136,9 +1095,6 @@ dialog>footer {
     font-size:9px
   }
 
-  .canvas-note {
-    display:none
-  }
 
   .hud {
     left:8px;

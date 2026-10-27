@@ -465,15 +465,9 @@ function drawPostRenderOverlays() {
   renderExactNoise = previousExact;
 }
 
-function updateRenderLabels(exact, engine, interactive) {
+function updateRenderLabels() {
   zoomLabel.textContent = `1 px = ${formatNumber(view.blocksPerPixel)} blocks`;
-  const structures = (compiled.sourceSummaries || compiled).length;
-  const childCount = compiled.length - structures;
-  const quality = mapSource.value === "biomes" ? "biomes" : "exact mask";
-  const sampling=lastBiomeMap ? ` | sample ${lastBiomeMap.sampleStep} blocks${lastBiomeMap.targetStep && lastBiomeMap.targetStep!==lastBiomeMap.sampleStep ? ` → ${lastBiomeMap.targetStep}` : ""}` : "";
-  const timing=firstFrameElapsedMs===null ? "" : ` (first ${firstFrameElapsedMs} ms)`;
-  const mapLabel=appliedPaintText?`Painted map${structures?` / ${structures} shapes`:''}`:`${structures} shapes`;
-  statsLabel.textContent = `${mapLabel}${childCount > 0 ? ` / ${childCount} child islands` : ""} | ${quality} ${engine} ${lastRenderElapsedMs} ms${timing}${sampling}`;
+  statsLabel.textContent = mapSource.value === "biomes" ? "Minecraft + WGE" : "Island mask";
 }
 
 function drawOverlays(width, height) {

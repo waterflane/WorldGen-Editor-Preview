@@ -15,7 +15,7 @@
   const baseCache=WgeTileCache.create(makeImage),paintCache=WgeTileCache.create(makeImage,4096);
   function tell(text,error=false){status.textContent=text;status.title=text;status.classList.toggle('error',error);}
   function updateStatus(){
-    tell(`${revision===appliedRevision?'Biomes up to date':'Unapplied changes'} · ${dirty?'unsaved project':'project ready'} · seed ${$('editorSeed').value}${previewDiverged?' · applied preview differs from draft':''}${currentBase?.enabled===false?' · generation disabled':''}`);
+    tell(`${dirty?'Unsaved changes':'Ready'} · ${revision===appliedRevision?'Biomes current':'Biomes pending'}${previewDiverged?' · Preview differs':''}${currentBase?.enabled===false?' · Generation disabled':''}`);
     $('documentTitle').textContent=$('editorName').value||'Untitled Map';
     $('documentState').textContent=revision===appliedRevision?'Applied':'Draft';
     $('viewModeLabel').textContent=active?'Map canvas':revision===appliedRevision?'Applied biomes':'Applied biomes · draft changed';
@@ -113,7 +113,6 @@
     canvas.hidden=!editor;$('previewCanvas').hidden=editor;
     hud.hidden=!editor;$('previewHud').hidden=editor;$('biomeTooltip').hidden=true;cursor.hidden=true;
     $('inspectModeButton').setAttribute('aria-pressed',String(!editor));
-    $('canvasHint').textContent=editor?tool==='select'?'Select an object to move it · Scroll to zoom':tool==='pan'?'Drag to pan · Scroll to zoom':'Paint coastline · Hold Space to pan':'Applied configuration · Update biomes to see edits';
     if(editor){
       WgePreview.pause();
       if(!loaded&&!pendingLoad){const current=WgePreview.snapshot();open(current.document,current.seed,current.view);}
@@ -196,7 +195,7 @@
     $('selectionKind').textContent=brush?'BRUSH':paintSelection?'PAINTED':entry?.outline?'OUTLINE':entry?(entry.type||'island').toUpperCase():'MAP';
     if(paintSelection){const b=paintSelection.bounds;for(const [id,value]of Object.entries({paintCenterX:paintSelection.x,paintCenterZ:paintSelection.z,paintWidth:b.maxX-b.minX,paintDepth:b.maxZ-b.minZ}))$(id).value=value;}
     if(!entry)return;
-    $('shapeCoastProperties').hidden=!!entry.outline;$('shapeNoiseProperties').hidden=!!entry.outline;$('outlineProperties').hidden=!entry.outline;
+    $('shapeCoastProperties').hidden=!!entry.outline;$('shapeNoiseProperties').hidden=!!entry.outline;
     $('objectHeading').textContent=entry.name||'Island';
     $('objectGeometryKind').textContent=entry.outline?'CUSTOM CONTOUR':'PARAMETRIC';
     const g=entryGeometry(entry),radius=Math.max(g.rx,g.rz),noise=entry.noise||{};
@@ -339,7 +338,7 @@
   }
   function download(text,name){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,result.filename);if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
-  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,result.filename);tell(`Preset exported. Add it to config/worldgen_editor/presets, select WGE: ${result.name} in World Type, and use seed ${result.seed}.`);}catch(error){tell(error.message,true);}});
+  $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,result.filename);tell(`Preset exported · Seed ${result.seed}`);}catch(error){tell(error.message,true);}});
   async function inspectCurrent(){
     if(applying)return;finishGesture();
     applying=true;$('applyEditorButton').disabled=true;

@@ -58,6 +58,6 @@ test('Convert to island opens the contour inspector instead of procedural noise 
  ui.elements.get('convertPaintButton').listeners.click();assert.equal(ui.messages.at(-1).type,'paint-convert');assert.equal(ui.elements.get('convertPaintButton').disabled,true);
  const entry={type:'island',name:'Painted Island 1',x:0,z:0,radius_x:64,radius_z:64,outline:{radius_x:64,radius_z:64,mask:{}}};
  ui.emit({type:'loaded',epoch:0,name:'Test map',seed:'2',editor:{radius:128,roughness:.25},base:{entries:[entry]},preserveHistory:true,selected:0,paintBounds:null});
- assert.equal(ui.elements.get('objectProperties').hidden,false);assert.equal(ui.elements.get('shapeCoastProperties').hidden,true);assert.equal(ui.elements.get('shapeNoiseProperties').hidden,true);assert.equal(ui.elements.get('outlineProperties').hidden,false);
+ assert.equal(ui.elements.get('objectProperties').hidden,false);assert.equal(ui.elements.get('shapeCoastProperties').hidden,true);assert.equal(ui.elements.get('shapeNoiseProperties').hidden,true);
  assert.equal(ui.elements.get('objectGeometryKind').textContent,'CUSTOM CONTOUR');
 });
