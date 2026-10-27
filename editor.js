@@ -14,12 +14,25 @@
   let operation=0,measurement=null,firstPaintPending=false,completePaintPending=false;
   const makeImage=tile=>{const c=document.createElement('canvas');c.width=tile.size;c.height=tile.size;c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(tile.buffer),tile.size,tile.size),0,0);return c;};
   const baseCache=WgeTileCache.create(makeImage),paintCache=WgeTileCache.create(makeImage,4096);
+  function setTemperature(select,value){
+    if(![...select.options].some(o=>o.value===value)){const option=document.createElement('option');option.value=value;option.textContent=value+' (unavailable)';select.append(option);}
+    select.value=value;
+  }
+  window.addEventListener('wge:climate-catalog',()=>{
+    for(const id of ['mapTemperature','shapeTemperature']){
+      const select=$(id),value=select.value;select.replaceChildren();
+      const choices=window.WgeProfiles?.catalog?.climates||WgeClimate.choices.filter(c=>c.source==='Minecraft');let group=null,source=null;
+      for(const choice of choices){if(choice.source!==source){source=choice.source;group=document.createElement('optgroup');group.label=source;select.append(group);}
+        const option=document.createElement('option');option.value=choice.id;option.textContent=choice.id==='standard'&&id==='shapeTemperature'?'Inherit map':choice.name;group.append(option);}
+      setTemperature(select,value||'standard');
+    }
+  });
   function tell(text,error=false){status.textContent=text;status.title=text;status.classList.toggle('error',error);}
   function updateStatus(){
     const current=revision===appliedRevision&&!inspectorDirty;
     tell(`${dirty?'Unsaved changes':'Ready'} · ${current?'Biomes current':'Biomes pending'}${previewDiverged?' · Preview differs':''}${currentBase?.enabled===false?' · Generation disabled':''}`);
     $('documentTitle').textContent=$('editorName').value||'Untitled Map';
-    $('documentState').textContent=current?'Applied':'Draft';
+    $('documentState').textContent=(current?'Applied':'Draft')+(currentBase?.generation_version?' · Gen '+currentBase.generation_version:'');
     $('viewModeLabel').textContent=active?'Map canvas':current?'Applied biomes':'Applied biomes · draft changed';
   }
   function send(type,data={}){worker?.postMessage({type,...data});}
@@ -33,6 +46,7 @@
         if(m.seed!==undefined)$('editorSeed').value=m.seed;
         if(m.name!==undefined)$('editorName').value=m.name;
         if(m.oceanTemperature!==undefined)$('oceanTemperature').value=m.oceanTemperature;
+        if(m.temperature!==undefined)setTemperature($('mapTemperature'),m.temperature);
         pendingLoad=false;epoch=m.epoch;tell(m.error,true);
         if(sourcePending){$('sourceError').textContent=m.error;sourcePending=false;}
         if(converting){converting=false;$('convertPaintButton').disabled=false;}
@@ -44,7 +58,8 @@
         $('editorSeed').value=m.seed;$('brushRadius').value=m.editor.radius;$('brushRoughness').value=Math.round(m.editor.roughness*100);updateBrushLabels();
         if(m.name!==undefined)$('editorName').value=m.name;
         $('oceanTemperature').value=m.base.ocean_temperature??'';
-        if(!preserve){view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;inspectorDirty=false;inspectorEntry=null;}
+        setTemperature($('mapTemperature'),m.base.temperature??'standard');
+        if(!preserve){if(m.editor.profile&&window.WgeProfiles)void WgeProfiles.restore(m.editor.profile).catch(error=>tell(error.message,true));view=m.editor.view||pendingView||view;revision=0;appliedRevision=-1;dirty=pendingDirty;previewDiverged=false;inspectorDirty=false;inspectorEntry=null;}
         if(m.selected!==undefined)selected=m.selected;
         if(selected>=currentBase.entries.length)selected=currentBase.entries.length-1;
         if(!preserve&&currentBase.entries.length)selected=0;
@@ -83,6 +98,7 @@
       if(m.type==='state'){
         if(m.name!==undefined)$('editorName').value=m.name;
         if(m.oceanTemperature!==undefined)$('oceanTemperature').value=m.oceanTemperature;
+        if(m.temperature!==undefined)setTemperature($('mapTemperature'),m.temperature);
         const changed=m.revision!==revision;
         if(changed){revision=m.revision;dirty=true;}
         if(paintSelection&&paintSelection.revision!==revision){paintSelection=null;fillInspector();draw();}
@@ -211,7 +227,7 @@
       shapeNoiseSeed:noise.seed??entry.name??`island_${selected+1}`,shapeNoiseScale:noise.scale??3.2,shapeOctave:noise.first_octave??-1,shapeAmplitudes:(noise.amplitudes??[1,.78,.55,.34]).join(', ')};
     for(const [id,value]of Object.entries(values))$(id).value=value;
     $('shapeOverlap').checked=!!entry.overlap;let temperature=(entry.temperature??entry.climate??'standard').toLowerCase();
-    $('shapeTemperature').value=({normal:'temperate',hot:'warm'})[temperature]||(['cold','warm','temperate'].includes(temperature)?temperature:'standard');
+    setTemperature($('shapeTemperature'),({normal:'temperate',hot:'warm'})[temperature]||temperature);
     $('archipelagoProperties').hidden=entry.type!=='archipelago';
     $('customCoastProperties').hidden=entry.type==='ocean';$('customCoast').checked=!!entry.coast;
     $('beachWidth').value=$('beachWidthSlider').value=entry.coast?.beach_width_blocks??16;
@@ -336,8 +352,9 @@
   });
   $('editorSeed').addEventListener('change',()=>{finishGesture();send('seed',{seed:$('editorSeed').value});});
   $('editorName').addEventListener('change',()=>{finishGesture();send('name',{name:$('editorName').value});});
+  $('mapTemperature').addEventListener('change',()=>{finishGesture();send('temperature',{value:$('mapTemperature').value});});
   $('oceanTemperature').addEventListener('change',()=>{finishGesture();send('ocean-temperature',{value:$('oceanTemperature').value});});
-  $('newMapButton').addEventListener('click',()=>{if(okayToReplace()){chooseTool('land');selected=-1;open({enabled:true,entries:[]},$('editorSeed').value,{x:0,z:0,blocksPerPixel:4});}});
+  $('newMapButton').addEventListener('click',()=>{if(okayToReplace()){chooseTool('land');selected=-1;open({enabled:true,generation_version:5,entries:[]},$('editorSeed').value,{x:0,z:0,blocksPerPixel:4});}});
   $('importPreviewButton').addEventListener('click',()=>{if(okayToReplace()){const p=WgePreview.snapshot();open(p.document,p.seed,p.view);}});
   $('projectInput').addEventListener('change',async event=>{
     const file=event.target.files[0];event.target.value='';if(!file||!okayToReplace())return;
@@ -347,6 +364,7 @@
     if(!loaded||pendingLoad||gesture)return Promise.reject(new Error('Finish the current action and wait for the map to load'));
     return new Promise((resolve,reject)=>{const id=++exportId;exports.set(id,{resolve,reject});send('export',{id,kind,view:{...view},...(settings?{settings}:{})});});
   }
+  window.addEventListener('wge:profile-selected',()=>{previewDiverged=true;updateStatus();});
   function download(text,name){const url=URL.createObjectURL(new Blob([text],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
   $('saveProjectButton').addEventListener('click',async()=>{try{const result=await exportDocument('project');download(result.text,result.filename);if(result.revision===revision)dirty=false;updateStatus();}catch(error){tell(error.message,true);}});
   $('exportPresetButton').addEventListener('click',async()=>{try{const result=await exportDocument('preset');download(result.text,result.filename);tell(`Preset exported · Seed ${result.seed}`);}catch(error){tell(error.message,true);}});
@@ -354,10 +372,10 @@
     if(applying)return;finishGesture();
     const pendingObject=inspectorDirty&&selected>=0;
     if((pendingObject||options.entry)&&!$('shapeForm').reportValidity())return;
-    const settings={seed:$('editorSeed').value,name:$('editorName').value,oceanTemperature:$('oceanTemperature').value,
+    const settings={seed:$('editorSeed').value,name:$('editorName').value,oceanTemperature:$('oceanTemperature').value,temperature:$('mapTemperature').value,profile:window.WgeProfiles?.selection,
       ...(options.entry?{entry:options.entry}:pendingObject?{entry:{index:selected,patch:shapePatch()}}:{})};
     applying=true;$('applyEditorButton').disabled=true;
-    try{const result=await exportDocument('apply',settings);WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;inspectorDirty=false;fillInspector();updateStatus();switchMode(false);}catch(error){tell(error.message,true);}
+    try{if(window.WgeProfiles?.ready){await WgeProfiles.ready;settings.profile=WgeProfiles.selection;}const result=await exportDocument('apply',settings);if(window.WgeProfiles)result.profile=await WgeProfiles.validate(result);if(result.revision<revision)throw new Error('Map changed; apply again');WgePreview.applyPainted(result,view);appliedRevision=result.revision;previewDiverged=false;inspectorDirty=false;fillInspector();updateStatus();switchMode(false);}catch(error){tell(error.message,true);}
     finally{applying=false;$('applyEditorButton').disabled=false;}
   }
   $('applyEditorButton').addEventListener('click',inspectCurrent);

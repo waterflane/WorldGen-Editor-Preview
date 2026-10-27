@@ -6,7 +6,7 @@ try {
 } catch { }
 if ($service) {
     if ($Prepare) { throw 'Stop the running preview before preparing changed Java sources.' }
-    if ($service.protocol -ne 2 -or $service.minecraft -ne '1.21.1' -or $service.capabilities -notcontains 'ocean_temperature_v1' -or $service.capabilities -notcontains 'island_outline_v1') {
+    if ($service.protocol -ne 3 -or $service.minecraft -ne '1.21.1' -or $service.capabilities -notcontains 'climate_selections_v1' -or $service.capabilities -notcontains 'profiles_v1' -or $service.capabilities -notcontains 'ocean_temperature_v1' -or $service.capabilities -notcontains 'island_outline_v1') {
         throw 'The running Java preview is outdated. Stop it, run start-preview.ps1 -Prepare, then reopen the preview.'
     }
     Write-Output 'WGE preview is already running: http://127.0.0.1:8765/'

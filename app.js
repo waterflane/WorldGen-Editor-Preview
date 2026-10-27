@@ -98,6 +98,7 @@ const reliefToggle = document.querySelector("#reliefToggle");
 let backendAvailable = false;
 let backendError = "Start the local Java preview and open its URL to view biomes";
 let renderIdentity = "";
+let appliedProfile={id:"vanilla",worldPreset:"minecraft:normal",fingerprint:""};
 function updateModeControls(){
   const java=mapSource.value==="biomes";
   heightMode.disabled=!java;reliefToggle.disabled=!java||heightMode.value!=="surface";thresholdToggle.disabled=java;
@@ -105,10 +106,10 @@ function updateModeControls(){
 updateModeControls();
 for (const input of [mapSource,heightMode,reliefToggle]) input.addEventListener("change",()=>{updateModeControls();requestRender();});
 if (location.protocol !== "file:") fetch("/api/info").then(r=>r.json()).then(info=>{
-  backendAvailable=info.protocol===2&&info.minecraft==="1.21.1"
-    &&[1,2,3,4].every(version=>info.supported_generation_versions?.includes(version))
-    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('vanilla_wge_only')&&info.capabilities?.includes('ocean_temperature_v1')&&info.capabilities?.includes('island_outline_v1')&&info.capabilities?.includes('coast_profile_v1')&&info.capabilities?.includes('natural_coast_v1');
-  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 2, generation 1/2/3/4, painted maps, ocean temperature rules, island outlines, coast profiles and natural coast rules for Minecraft 1.21.1; prepare the updated runtime";
+  backendAvailable=info.protocol===3&&info.minecraft==="1.21.1"
+    &&[1,2,3,4,5].every(version=>info.supported_generation_versions?.includes(version))
+    &&info.capabilities?.includes('painted_map_v1')&&info.capabilities?.includes('profiles_v1')&&info.capabilities?.includes('climate_selections_v1')&&info.capabilities?.includes('ocean_temperature_v1')&&info.capabilities?.includes('island_outline_v1')&&info.capabilities?.includes('coast_profile_v1')&&info.capabilities?.includes('natural_coast_v1');
+  if(!backendAvailable)backendError="Java preview version mismatch: expected protocol 3, generation 1–5, painted maps, ocean temperature rules, island outlines, coast profiles and natural coast rules for Minecraft 1.21.1; prepare the updated runtime";
   if(backendAvailable){mapSource.value="biomes";updateModeControls();requestRender();}
 }).catch(()=>{});
 let renderWorker = null;
@@ -296,7 +297,7 @@ function requestRender() {
 }
 
 function render() {
-  const identity=[appliedConfigText,appliedSeedText,mapSource.value,heightMode.value,reliefToggle.checked,thresholdToggle.checked].join("\n");
+  const identity=[appliedProfile.id,appliedProfile.fingerprint,appliedProfile.worldPreset,appliedConfigText,appliedSeedText,mapSource.value,heightMode.value,reliefToggle.checked,thresholdToggle.checked].join("\n");
   if(identity!==renderIdentity){renderIdentity=identity;clearRenderedMap();}
   const rect = canvas.getBoundingClientRect();
   const requestedQuality = Number(qualitySelect.value) || 0.65;
@@ -316,7 +317,7 @@ function render() {
     queueWorkerRender({
       id: ++renderSequence,
       configText: appliedConfigText,
-      seedText: appliedSeedText,
+      seedText: appliedSeedText,profile:appliedProfile.id,profileFingerprint:appliedProfile.fingerprint,worldPreset:appliedProfile.worldPreset,biomeColors:window.WgeProfiles?.colors,
       view: { ...view },
       width,
       height,
@@ -381,7 +382,7 @@ function handleWorkerMessage(event) {
 
 
 function renderOnMainThread(width,height,cssWidth,cssHeight,quality,exact,samplingQuality=quality,interactive=false) {
-  const message={id:++renderSequence,configText:appliedConfigText,seedText:appliedSeedText,view:{...view},width,height,cssWidth,cssHeight,quality,
+  const message={id:++renderSequence,configText:appliedConfigText,seedText:appliedSeedText,profile:appliedProfile.id,profileFingerprint:appliedProfile.fingerprint,worldPreset:appliedProfile.worldPreset,biomeColors:window.WgeProfiles?.colors,view:{...view},width,height,cssWidth,cssHeight,quality,
     exact:true,shores:thresholdToggle.checked,source:mapSource.value,heightMode:heightMode.value,relief:reliefToggle.checked,backendAvailable,backendError,samplingQuality,interactive};
   latestRenderSequence=message.id;
   startRenderTiming(message.id);
@@ -425,7 +426,8 @@ function updateBiomeTooltip(){
   const px=Math.floor(x/rect.width*lastBiomeMap.width),py=Math.floor(y/rect.height*lastBiomeMap.height);
   const id=lastBiomeMap.palette[lastBiomeMap.indices[py*lastBiomeMap.width+px]];
   if(!id)return;
-  biomeTooltip.textContent=id.replace(/^minecraft:/,"").replaceAll("_"," ");
+  const biome=window.WgeProfiles?.biomes?.get(id);
+  biomeTooltip.textContent=(biome?.name||id.split(':').pop().replaceAll('_',' '))+' · '+(biome?.source||id.split(':')[0])+'\n'+id;
   biomeTooltip.hidden=false;
   const width=biomeTooltip.offsetWidth,height=biomeTooltip.offsetHeight;
   const left=x+14+width<=rect.width-8 ? x+14 : x-width-14;
@@ -467,7 +469,7 @@ function drawPostRenderOverlays() {
 
 function updateRenderLabels() {
   zoomLabel.textContent = `1 px = ${formatNumber(view.blocksPerPixel)} blocks`;
-  statsLabel.textContent = mapSource.value === "biomes" ? "Minecraft + WGE" : "Island mask";
+  statsLabel.textContent = mapSource.value === "biomes" ? appliedProfile.id==='vanilla'?"Minecraft + WGE":(window.WgeProfiles?.profiles?.find(p=>p.id===appliedProfile.id)?.name||appliedProfile.id)+" + WGE" : "Island mask";
 }
 
 function drawOverlays(width, height) {
@@ -642,7 +644,7 @@ window.WgePreview={
   snapshot(){return {document:appliedConfigText,seed:appliedSeedText,view:{...view}};},
   pause(){previewPaused=true;setState('editor',false);latestRenderSequence=++renderSequence;if(renderWorker)renderWorker.postMessage({id:latestRenderSequence,cancelOnly:true});else fallbackRenderer.cancel(latestRenderSequence);},
   resume(nextView){previewPaused=false;if(nextView)view={...nextView};requestRender();},
-  applyPainted(result,nextView){documentSequence++;if(nextView)view={...nextView};applyingEditor=true;try{commitDocument(result.metadataText,result.seed,result.paintText,result.bounds);}finally{applyingEditor=false;}},
+  applyPainted(result,nextView){appliedProfile=result.profile||{...window.WgeProfiles?.selection}||appliedProfile;documentSequence++;if(nextView)view={...nextView};applyingEditor=true;try{commitDocument(result.metadataText,result.seed,result.paintText,result.bounds);}finally{applyingEditor=false;}},
 };
 
 

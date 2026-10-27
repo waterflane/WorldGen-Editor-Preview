@@ -33,7 +33,8 @@
     }
     async function render(message,active,{preview,onProgress}={}){
       const started=performance.now();
-      const nextKey="coast3\n"+message.seedText+"\n"+message.configText;
+      if(message.biomeColors)WgeBiomeColors.installCatalog(Object.entries(message.biomeColors).map(([id,color])=>({id,color})));
+      const nextKey="profiles3\n"+(message.profile||"vanilla")+"\n"+(message.profileFingerprint||"")+"\n"+(message.worldPreset||"minecraft:normal")+"\n"+message.seedText+"\n"+message.configText;
       if(nextKey!==key){
         const document=WgeMask.readDocument(JSON.parse(message.configText)),parsed=document.config,next=WgeMask.parseConfig(parsed,WgeMask.parseSeed(message.seedText));
         config=parsed;compiled=next;generationVersion=document.generationVersion;key=nextKey;session=null;tiles.clear();levels.clear();
@@ -42,7 +43,7 @@
       // A 16x16 sample tile amortizes HTTP/composition while remaining cancellable per sample.
       const size=16;
       if(java&&!message.backendAvailable)throw new Error(message.backendError||"Start the local Java preview and open its URL to view biomes");
-      if(java&&!session){session=await post("/api/session",{seed:message.seedText,config,generation_version:generationVersion,coast_revision:3,client},active);if(!session)return null;}
+      if(java&&!session){session=await post("/api/session",{seed:message.seedText,config,generation_version:generationVersion,coast_revision:3,profile:message.profile||"vanilla",...(message.profileFingerprint?{expected_resources:message.profileFingerprint}:{}),world_preset:message.worldPreset||"minecraft:normal",client},active);if(!session)return null;}
       const step=sampleStep(message);
       const includeHeights=!!message.relief&&message.heightMode==="surface";
       const group=(java?session.session:"mask")+":"+message.heightMode+(java&&includeHeights?":heights":"");
@@ -107,7 +108,7 @@
         const x=tx*size*step,z=tz*size*step;
         tile=fromFinerCache(x,z);
         if(!tile&&java){
-          tile=await post("/api/tile",{session:session.session,client,request:(session.request_base||0)+message.id,x,z,step,size,height_mode:message.heightMode==="surface"?"surface":"slice",y:Number(message.heightMode)||0,include_heights:includeHeights},active);
+          tile=await post("/api/tile",{session:session.session,profile:message.profile||"vanilla",client,request:(session.request_base||0)+message.id,x,z,step,size,height_mode:message.heightMode==="surface"?"surface":"slice",y:Number(message.heightMode)||0,include_heights:includeHeights},active);
           if(!tile)return null;
         }else if(!tile){
           tile={values:new Float64Array(size*size),zones:new Uint8Array(size*size)};

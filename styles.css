@@ -1189,3 +1189,5 @@ dialog>footer {
   }
 
 }
+
+#profileStatus{font-size:11px;overflow-wrap:anywhere;margin:6px 0}#profileDetails{font-size:11px;max-height:140px;overflow:auto;overflow-wrap:anywhere}.biome-tooltip{white-space:pre-line}
