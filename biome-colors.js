@@ -23,11 +23,15 @@
   const vanilla=Object.freeze(Object.fromEntries(Object.entries(colors).map(([id,hex])=>[
     `minecraft:${id}`,Object.freeze([0,2,4].map(i=>parseInt(hex.slice(i,i+2),16)))
   ])));
+  const modColors=new Map();
+  function installCatalog(biomes){for(const biome of biomes){if(/^#[0-9a-f]{6}$/i.test(biome.color||''))modColors.set(biome.id,Object.freeze([1,3,5].map(i=>parseInt(biome.color.slice(i,i+2),16))));}}
+  if(typeof require==='function'){const palette=require('./biome-palette.json');installCatalog(Object.entries(palette).map(([id,color])=>({id,color})));}
   const fallback=new Map();
   function biomeColor(id){
     if(typeof id!=="string"||!id)return [48,53,60];
     const known=vanilla[id.includes(":")?id:`minecraft:${id}`];
     if(known)return known;
+    if(modColors.has(id))return modColors.get(id);
     if(fallback.has(id))return fallback.get(id);
     // Include the namespace: unrelated mods with the same path need independent colors.
     let hash=2166136261;
@@ -42,6 +46,6 @@
     if(fallback.size>512)fallback.delete(fallback.keys().next().value);
     return color;
   }
-  root.WgeBiomeColors={biomeColor,vanilla};
+  root.WgeBiomeColors={biomeColor,vanilla,installCatalog};
   if(typeof module!=="undefined")module.exports=root.WgeBiomeColors;
 })(globalThis);

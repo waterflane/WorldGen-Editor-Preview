@@ -32,3 +32,9 @@ test('unknown registry IDs have reproducible saturated colors, independent of re
  assert.notDeepEqual(biomeColor(id),biomeColor('different_mod:cherry_grove'));
  assert.deepEqual(biomeColor(undefined),[48,53,60],'missing data stays neutral');
 });
+
+test('locked BOP and Terralith palettes cover all 164 mod biomes with distinct explicit colors',()=>{
+ const palette=require('../biome-palette.json');assert.equal(Object.keys(palette).length,164);
+ assert.equal(new Set(Object.values(palette)).size,164);
+ for(const [id,color] of Object.entries(palette)){assert.match(id,/^(biomesoplenty|terralith):/);assert.match(color,/^#[0-9a-f]{6}$/);assert.deepEqual([...biomeColor(id)],[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)));}
+});
